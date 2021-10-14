@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 from joblib import Parallel, delayed
 from tqdm import tqdm
-
+from configs.preprocess_configs import NUM_JOBS
 from json_utils import load_annotation_list
 import youtube_dl
 
@@ -13,7 +13,7 @@ def download_single_video(vid, save_path='./data/download/'):
         'outtmpl': save_path + '%(id)s.%(ext)s',
         'writeautomaticsub': True,
         'subtitleslangs': ['en'],
-        'quiet': True,
+        # 'quiet': True,
         'postprocessors': [{
             'key': 'FFmpegSubtitlesConvertor',
             'format': 'srt'
@@ -25,8 +25,10 @@ def download_single_video(vid, save_path='./data/download/'):
 
 
 def download_data(annotation_list):
-    Parallel(n_jobs=32)(delayed(download_single_video)(annotation[0]['videoID'])
-                        for annotation in tqdm(annotation_list, desc="Downloading from Youtube"))
+    # Parallel(n_jobs=NUM_JOBS)(delayed(download_single_video)(annotation[0]['videoID'])
+    #                     for annotation in tqdm(annotation_list, desc="Downloading from Youtube"))
+    for annotation in tqdm(annotation_list, desc="Downloading from Youtube"):
+        download_single_video(annotation[0]['videoID'])
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ from functools import partial
 
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from configs.preprocess_configs import NUM_JOBS, GRID_FEATURE_DIM,ANNOTATION_ROOT, FRAME_ROOT, \
+from configs.preprocess_configs import NUM_JOBS, GRID_FEATURE_DIM, ANNOTATION_ROOT, FRAME_ROOT, \
     GRID_FEATURE_ROOT_QUERY, GRID_FEATURE_ROOT_FRAME, GRID_FEATURE_R50_PATH
 
 from detectron2.checkpoint import DetectionCheckpointer
@@ -140,32 +140,31 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
 
     # output_size here should be configurable: 1x1, 3x3, 7x7, etc;
     # 1/32 corresponding to 1/32, no need to modify
-    roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_FEATURE_DIM, GRID_FEATURE_DIM), spatial_scale=1 / 32)
+    roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_FEATURE_DIM, GRID_FEATURE_DIM),
+                         spatial_scale=1 / 32)
 
     # extract feature from query image
     if not os.path.exists(query_output_root):
         os.makedirs(query_output_root)
     img_root_list = glob.glob(os.path.join(query_input_root + '/image', '*'))
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
-                        (model, roi_pooler,
-                         out_path=query_output_root + '/' + img_root.split('/')[-1],
-                         img_root=img_root,
-                         csv_path=query_input_root + '/csv/' + img_root.split('/')[-1] + '.csv'
-                         if os.path.exists(query_input_root + '/csv/' + img_root.split('/')[-1] + '.csv') else '')
-                        for img_root in tqdm(img_root_list, desc='Extracting feature from query images'))
+                              (model, roi_pooler,
+                               out_path=query_output_root + '/' + img_root.split('/')[-1],
+                               img_root=img_root,
+                               csv_path=query_input_root + '/csv/' + img_root.split('/')[-1] + '.csv'
+                               if os.path.exists(query_input_root + '/csv/' + img_root.split('/')[-1] + '.csv') else '')
+                              for img_root in tqdm(img_root_list, desc='Extracting feature from query images'))
 
     # extract feature from video frame
     if not os.path.exists(frame_output_root):
         os.makedirs(frame_output_root)
     img_root_list = glob.glob(os.path.join(frame_input_root, '*'))
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
-                        (model, roi_pooler,
-                         out_path=frame_output_root + '/' + img_root.split('/')[-1],
-                         img_root=img_root, csv_path='')
-                        for img_root in tqdm(img_root_list, desc='Extracting feature from video frames'))
+                              (model, roi_pooler,
+                               out_path=frame_output_root + '/' + img_root.split('/')[-1],
+                               img_root=img_root, csv_path='')
+                              for img_root in tqdm(img_root_list, desc='Extracting feature from video frames'))
 
 
 if __name__ == "__main__":
-    args = extract_grid_feature_argument_parser().parse_args()
-    print("Command Line Args:", args)
     extract_grid_feature()

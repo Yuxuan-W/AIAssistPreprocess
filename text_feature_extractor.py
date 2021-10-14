@@ -22,7 +22,7 @@ def get_time_list(sub, tokenizer):
 
 def extract_from_subtitle(tokenizer, model, sub, save_path, max_length=256):
     # Get all text
-    seg_id = sub['seg_name']
+    seg_id = sub['seg_id']
     vid = seg_id[0:10]
     sub = sub['sub']
     text = sub[0]['text']
