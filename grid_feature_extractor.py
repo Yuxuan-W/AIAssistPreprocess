@@ -13,10 +13,10 @@ import h5py
 import numpy as np
 import torchvision
 from functools import partial
-
+from torch.nn.functional import avg_pool2d
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from configs.preprocess_configs import NUM_JOBS, GRID_FEATURE_DIM, ANNOTATION_ROOT, FRAME_ROOT, \
+from configs.preprocess_configs import NUM_JOBS, GRID_REGION_FEATURE_DIM, ANNOTATION_ROOT, FRAME_ROOT, \
     GRID_FEATURE_ROOT_QUERY, GRID_FEATURE_ROOT_FRAME, GRID_FEATURE_R50_PATH
 
 from detectron2.checkpoint import DetectionCheckpointer
@@ -105,10 +105,7 @@ def extract_grid_feature_single_dir(model, roi_pooler, out_path, img_root, csv_p
             # for every image, extract feature for the full image
             group = f.create_group(img_name)
             h, w, _ = img.shape
-            image_feature = roi_pooler(
-                input=conv5_feat,
-                boxes=torch.FloatTensor([[0, 0, 0, w, h]]).to(model.device)
-            )
+            image_feature = avg_pool2d(conv5_feat, (conv5_feat.size(-2), conv5_feat.size(-1)), 1)
             group['image'] = torch.Tensor.cpu(image_feature)
 
             # if bbox exists, extract region feature for bbox
@@ -140,7 +137,7 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
 
     # output_size here should be configurable: 1x1, 3x3, 7x7, etc;
     # 1/32 corresponding to 1/32, no need to modify
-    roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_FEATURE_DIM, GRID_FEATURE_DIM),
+    roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_REGION_FEATURE_DIM, GRID_REGION_FEATURE_DIM),
                          spatial_scale=1 / 32)
 
     # extract feature from query image

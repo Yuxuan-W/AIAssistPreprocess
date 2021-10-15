@@ -1,7 +1,7 @@
 NUM_JOBS = 10
 FRAME_WIDTH = 746
 FRAME_HEIGHT = 448
-GRID_FEATURE_DIM = 3
+GRID_REGION_FEATURE_DIM = 1
 ANNOTATION_ROOT = 'data/annotation'
 DOWNLOAD_ROOT = 'data/download'
 SUBTITLE_ROOT = 'data/segment/subtitle'
