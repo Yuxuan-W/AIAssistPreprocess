@@ -29,7 +29,12 @@ def load_annotation_list():
 
 
 def load_subtitle_list():
-    return load_json_list('data/segment/subtitle')
+    root = 'data/segment/subtitle'
+    video_root_list = glob.glob(os.path.join(root, '*'))
+    subtitle_list = []
+    for video_root in video_root_list:
+        subtitle_list = subtitle_list + load_json_list(video_root)
+    return subtitle_list
 
 
 if __name__ == '__main__':

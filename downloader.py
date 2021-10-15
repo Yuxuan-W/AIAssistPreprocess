@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+import os
+
 from joblib import Parallel, delayed
 from tqdm import tqdm
 from configs.preprocess_configs import NUM_JOBS
@@ -24,13 +26,20 @@ def download_single_video(vid, save_path='./data/download/'):
         ydl.download(['https://www.youtube.com/watch?v=' + vid])
 
 
-def download_data(annotation_list):
+def download_data():
     # Parallel(n_jobs=NUM_JOBS)(delayed(download_single_video)(annotation[0]['videoID'])
     #                     for annotation in tqdm(annotation_list, desc="Downloading from Youtube"))
-    for annotation in tqdm(annotation_list, desc="Downloading from Youtube"):
-        download_single_video(annotation[0]['videoID'])
+    # for annotation in tqdm(annotation_list, desc="Downloading from Youtube"):
+    #     download_single_video(annotation[0]['videoID'])
+    with open('textlist.txt') as f:
+        vid_list = f.readlines()
+    for vid in tqdm(vid_list, desc='Downloading from Youtube'):
+        vid = vid[0:11]
+        path = 'data/download/' + vid + '.mp4'
+        if not os.path.exists(path):
+            download_single_video(vid)
 
 
 if __name__ == '__main__':
     annotation_list = load_annotation_list()
-    download_data(annotation_list)
+    download_data()

@@ -156,12 +156,15 @@ def preprocess_subtitles_single_video(video_path, save_path, segment_list):
         sentence_index += 1
 
     # write to json
+    save_path = save_path + '/' + video_id
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
     for seg_index in range(len(segment_list)):
         srt_data = dict(
             seg_id=video_id + '_' + str(seg_index),
             sub=seg_sub_data[seg_index]
         )
-        save_json(srt_data, save_path + srt_data['seg_id'] + '.json')
+        save_json(srt_data, save_path + '/' + srt_data['seg_id'] + '.json')
 
 
 def preprocess_subtitles(segment, srt_dir=DOWNLOAD_ROOT, save_path=SUBTITLE_ROOT):

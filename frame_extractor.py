@@ -14,6 +14,9 @@ def extract_video_opencv(v_path, f_root, segments, sample_time_list):
     vid = os.path.basename(v_path)[0:-4]
     video_sample_time_list = sample_time_list[vid]
     video_segment = segments[vid]
+    f_root = f_root + '/' + vid
+    if not os.path.exists(f_root):
+        os.makedirs(f_root)
 
     vidcap = cv2.VideoCapture(v_path)
     width = vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)  # float
@@ -40,7 +43,7 @@ def extract_video_opencv(v_path, f_root, segments, sample_time_list):
                 os.makedirs(out_dir)
 
             image = cv2.resize(image, new_dim, interpolation=cv2.INTER_LINEAR)
-            cv2.imwrite(os.path.join(out_dir, 'image_%d.jpg' % image_index), image,
+            cv2.imwrite(os.path.join(out_dir, '%.3f.jpg' % time_second), image,
                         [cv2.IMWRITE_JPEG_QUALITY, 80])  # quality from 0-100, 95 is default, high is good
             image_index += 1
             interval_index += 1

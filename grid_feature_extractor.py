@@ -156,12 +156,16 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
                               for img_root in tqdm(img_root_list, desc='Extracting feature from query images'))
 
     # extract feature from video frame
-    if not os.path.exists(frame_output_root):
-        os.makedirs(frame_output_root)
-    img_root_list = glob.glob(os.path.join(frame_input_root, '*'))
+    img_root_list = []
+    video_root_list = glob.glob(os.path.join(frame_input_root, '*'))
+    for video_root in video_root_list:
+        img_root_list = img_root_list + glob.glob(os.path.join(video_root, '*'))
+    for img_root in img_root_list:
+        if not os.path.exists(frame_output_root + '/' + img_root[-25:-14]):
+            os.makedirs(frame_output_root + '/' + img_root[-25:-14])
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
                               (model, roi_pooler,
-                               out_path=frame_output_root + '/' + img_root.split('/')[-1],
+                               out_path=frame_output_root + '/' + img_root[-25:],
                                img_root=img_root, csv_path='')
                               for img_root in tqdm(img_root_list, desc='Extracting feature from video frames'))
 
