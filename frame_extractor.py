@@ -8,12 +8,11 @@ from json_utils import load_annotation_list
 from configs.preprocess_configs import FRAME_WIDTH, FRAME_HEIGHT, DOWNLOAD_ROOT, FRAME_ROOT
 
 
-def extract_video_opencv(v_path, f_root, segments, sample_time_list):
+def extract_video_opencv(v_path, f_root):
     '''v_path: single video path;
        f_root: root to store frames'''
     vid = os.path.basename(v_path)[0:-4]
-    video_sample_time_list = sample_time_list[vid]
-    video_segment = segments[vid]
+    out_dir = os.path.join(f_root, vid)
     f_root = f_root + '/' + vid
     if not os.path.exists(f_root):
         os.makedirs(f_root)
@@ -31,26 +30,18 @@ def extract_video_opencv(v_path, f_root, segments, sample_time_list):
 
     success, image = vidcap.read()
     count = 1
-    segment_index = 0
     interval_index = 0
-    image_index = 0
-    while success and segment_index < len(video_segment):
+    while success:
         time_second = count / fps
 
         if time_second >= interval_index * interval:
-            out_dir = os.path.join(f_root, vid) + '_' + str(segment_index)
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
 
             image = cv2.resize(image, new_dim, interpolation=cv2.INTER_LINEAR)
             cv2.imwrite(os.path.join(out_dir, '%.3f.jpg' % time_second), image,
                         [cv2.IMWRITE_JPEG_QUALITY, 80])  # quality from 0-100, 95 is default, high is good
-            image_index += 1
             interval_index += 1
-
-        if time_second >= video_segment[segment_index][1]:
-            segment_index += 1
-            image_index = 0
 
         success, image = vidcap.read()
         count += 1
@@ -65,35 +56,48 @@ def resize_dim(w, h, target):
         return int(target), int(target * h / w)
 
 
-def calculate_sample_time(video_seg_list):
-    sample_time_list = dict()
-    for video in video_seg_list.items():
-        video_sample_time_list = []
-        for seg in video[1]:
-            video_sample_time_list.append((np.linspace(seg[0], seg[1], num=8, endpoint=False) + (seg[1] - seg[0]) / 16)
-                                          .astype(int).tolist())
-        sample_time_list[video[0]] = video_sample_time_list
-    return sample_time_list
+def separate_frame(segment, f_root=FRAME_ROOT):
+    video_list = glob.glob(os.path.join(f_root, '*/'))
+    for video in video_list:
+        vid = video[-12:-1]
+        seg = segment[vid]
+        frame_list = glob.glob(os.path.join(video, '*.jpg'))
+        # make segment dirs
+        seg_dir_list = []
+        for seg_idx in range(len(seg)):
+            seg_dir = video + vid + '_' + str(seg_idx)
+            seg_dir_list.append(seg_dir)
+            if not os.path.exists(seg_dir):
+                os.makedirs(seg_dir)
+        # move images
+        for frame in frame_list:
+            time = float(frame.split('/')[-1][:-4])
+            for seg_idx in range(len(seg)):
+                if seg[seg_idx][0] <= time <= seg[seg_idx][1]:
+                    os.replace(frame, os.path.join(seg_dir_list[seg_idx], frame.split('/')[-1]))
 
 
-def sampling_frame(segment, v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
+def sampling_frame(v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
     print('Start extracting videos from %s, frame save to %s...' % (v_root, f_root))
 
     if not os.path.exists(f_root):
         os.makedirs(f_root)
     video_list = glob.glob(os.path.join(v_root, '*.mp4'))
-    sample_time_list = calculate_sample_time(segment)
+    video_list = ['data/download/2gNozF4T2og.mp4']
+    for video in video_list:
+        if os.path.exists(os.path.join(f_root, video[-15:-4])):
+            video_list.remove(video)
 
     # sampling from video
-    Parallel(n_jobs=32)(delayed(extract_video_opencv)(p, f_root, segment, sample_time_list)
+    Parallel(n_jobs=32)(delayed(extract_video_opencv)(p, f_root)
                         for p in tqdm(video_list, desc="Loop over videos"))
 
 
 if __name__ == '__main__':
-    # v_root is the video source path, f_root is where to store frames
-    seg_info = dict()
-    annotation_list = load_annotation_list()
-    for anno in annotation_list:
-        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    sampling_frame()
 
-    sampling_frame(seg_info)
+    # seg_info = dict()
+    # annotation_list = load_annotation_list()
+    # for anno in annotation_list:
+    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    # separate_frame(seg_info)

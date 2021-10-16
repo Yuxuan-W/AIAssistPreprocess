@@ -173,6 +173,9 @@ def preprocess_subtitles(segment, srt_dir=DOWNLOAD_ROOT, save_path=SUBTITLE_ROOT
 
     print("Start preprocessing srt files from %s ..." % srt_dir)
     srt_paths = glob.glob(os.path.join(srt_dir, "*.srt"))
+    for srt in srt_paths:
+        if os.path.exists(save_path + srt[-19:-7]):
+            srt_paths.remove(srt)
     Parallel(n_jobs=32)(delayed(preprocess_subtitles_single_video)
                         (srt, save_path, segment[os.path.basename(srt).split('.')[0]])
                         for srt in tqdm(srt_paths, desc="Loop over subtitle files"))

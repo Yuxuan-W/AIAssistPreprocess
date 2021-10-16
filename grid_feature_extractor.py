@@ -27,6 +27,8 @@ from detectron2.modeling import build_model
 from detectron2.data import detection_utils as utils
 
 # A simple mapper from object detection dataset to VQA dataset names
+from json_utils import load_annotation_list
+
 dataset_to_folder_mapper = {'coco_2014_train': 'train2014', 'coco_2014_val': 'val2014', 'coco_2015_test': 'test2015'}
 
 
@@ -65,7 +67,9 @@ def extract_grid_feature_single_dir(model, out_path, img_root, csv_path):
     csv_root is optional
     outputs the hdf5 file, whose name is defined in out_path
     '''
-
+    # if the hdf5 file already exists
+    if os.path.exists(out_path + '.hdf5'):
+        return
     # start output
     with torch.no_grad():
         # get image list
@@ -151,19 +155,44 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
                               for img_root in tqdm(img_root_list, desc='Extracting feature from query images'))
 
     # extract feature from video frame
-    img_root_list = []
+    if not os.path.exists(frame_output_root):
+        os.makedirs(frame_output_root)
     video_root_list = glob.glob(os.path.join(frame_input_root, '*'))
-    for video_root in video_root_list:
-        img_root_list = img_root_list + glob.glob(os.path.join(video_root, '*'))
-    for img_root in img_root_list:
-        if not os.path.exists(frame_output_root + '/' + img_root[-25:-14]):
-            os.makedirs(frame_output_root + '/' + img_root[-25:-14])
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
                               (model,
-                               out_path=frame_output_root + '/' + img_root[-25:],
-                               img_root=img_root, csv_path='')
-                              for img_root in tqdm(img_root_list, desc='Extracting feature from video frames'))
+                               out_path=frame_output_root + '/' + video_root[-11:],
+                               img_root=video_root, csv_path='')
+                              for video_root in tqdm(video_root_list, desc='Extracting feature from video frames'))
+
+
+def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRAME):
+    h5_list = glob.glob(os.path.join(frame_output_root, '*.hdf5'))
+    for h5 in h5_list:
+        vid = h5[-16:-5]
+        seg = segment[vid]
+        h5_dir = frame_output_root + '/' + vid
+        if not os.path.exists(h5_dir):
+            os.makedirs(h5_dir)
+        with h5py.File(h5, "r") as f:
+            img_list = list(f.keys())
+            for img in img_list:
+                time = float(img[:-4])
+                feature = np.array(f[img]['image'])
+                for seg_idx in range(len(seg)):
+                    if seg[seg_idx][0] <= time <= seg[seg_idx][1]:
+                        h5_seg_path = h5_dir + '/' + vid + '_' + str(seg_idx) + '.hdf5'
+                        if not os.path.exists(h5_seg_path):
+                            h5py.File(h5_seg_path, 'w')
+                        with h5py.File(h5_seg_path, 'r+') as seg_f:
+                            seg_f[str(time)] = feature
+        os.remove(h5)
 
 
 if __name__ == "__main__":
     extract_grid_feature()
+
+    seg_info = dict()
+    annotation_list = load_annotation_list()
+    for anno in annotation_list:
+        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    separate_frame_grid_feature(seg_info)
