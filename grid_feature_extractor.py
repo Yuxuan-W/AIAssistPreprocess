@@ -11,24 +11,20 @@ import os
 import torch
 import h5py
 import numpy as np
+import torch.nn as nn
 import torchvision
 from functools import partial
-from torch.nn.functional import avg_pool2d
 from joblib import Parallel, delayed
 from tqdm import tqdm
 from configs.preprocess_configs import NUM_JOBS, GRID_REGION_FEATURE_DIM, ANNOTATION_ROOT, FRAME_ROOT, \
     GRID_FEATURE_ROOT_QUERY, GRID_FEATURE_ROOT_FRAME, GRID_FEATURE_R50_PATH
+from grid_feats import add_attribute_config
 
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.engine import default_setup
 from detectron2.modeling import build_model
 from detectron2.data import detection_utils as utils
-
-from grid_feats import (
-    add_attribute_config,
-    build_detection_test_loader_with_attributes,
-)
 
 # A simple mapper from object detection dataset to VQA dataset names
 dataset_to_folder_mapper = {'coco_2014_train': 'train2014', 'coco_2014_val': 'val2014', 'coco_2015_test': 'test2015'}
@@ -63,7 +59,7 @@ def setup(args):
     return cfg
 
 
-def extract_grid_feature_single_dir(model, roi_pooler, out_path, img_root, csv_path):
+def extract_grid_feature_single_dir(model, out_path, img_root, csv_path):
     '''
     compute feature from single image folder: img_root
     csv_root is optional
@@ -74,6 +70,13 @@ def extract_grid_feature_single_dir(model, roi_pooler, out_path, img_root, csv_p
     with torch.no_grad():
         # get image list
         img_list = glob.glob(os.path.join(img_root, '*.jpg'))
+
+        # generate pooler
+        avg_pooler = nn.AdaptiveAvgPool2d(1)
+        # output_size here should be configurable: 1x1, 3x3, 7x7, etc;
+        # 1/32 corresponding to 1/32, no need to modify
+        roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_REGION_FEATURE_DIM, GRID_REGION_FEATURE_DIM),
+                             spatial_scale=1 / 32)
 
         # csv process: build a dictionary for all bbox in a video
         # for each question, there is a single dictionary including all the bbox info.
@@ -105,7 +108,7 @@ def extract_grid_feature_single_dir(model, roi_pooler, out_path, img_root, csv_p
             # for every image, extract feature for the full image
             group = f.create_group(img_name)
             h, w, _ = img.shape
-            image_feature = avg_pool2d(conv5_feat, (conv5_feat.size(-2), conv5_feat.size(-1)), 1)
+            image_feature = avg_pooler(conv5_feat)
             group['image'] = torch.Tensor.cpu(image_feature)
 
             # if bbox exists, extract region feature for bbox
@@ -135,17 +138,12 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
     )
     model.eval()
 
-    # output_size here should be configurable: 1x1, 3x3, 7x7, etc;
-    # 1/32 corresponding to 1/32, no need to modify
-    roi_pooler = partial(torchvision.ops.roi_pool, output_size=(GRID_REGION_FEATURE_DIM, GRID_REGION_FEATURE_DIM),
-                         spatial_scale=1 / 32)
-
     # extract feature from query image
     if not os.path.exists(query_output_root):
         os.makedirs(query_output_root)
     img_root_list = glob.glob(os.path.join(query_input_root + '/image', '*'))
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
-                              (model, roi_pooler,
+                              (model,
                                out_path=query_output_root + '/' + img_root.split('/')[-1],
                                img_root=img_root,
                                csv_path=query_input_root + '/csv/' + img_root.split('/')[-1] + '.csv'
@@ -161,7 +159,7 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
         if not os.path.exists(frame_output_root + '/' + img_root[-25:-14]):
             os.makedirs(frame_output_root + '/' + img_root[-25:-14])
     Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
-                              (model, roi_pooler,
+                              (model,
                                out_path=frame_output_root + '/' + img_root[-25:],
                                img_root=img_root, csv_path='')
                               for img_root in tqdm(img_root_list, desc='Extracting feature from video frames'))
