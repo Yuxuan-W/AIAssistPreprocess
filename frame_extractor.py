@@ -83,7 +83,6 @@ def sampling_frame(v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
     if not os.path.exists(f_root):
         os.makedirs(f_root)
     video_list = glob.glob(os.path.join(v_root, '*.mp4'))
-    video_list = ['data/download/2gNozF4T2og.mp4']
     for video in video_list:
         if os.path.exists(os.path.join(f_root, video[-15:-4])):
             video_list.remove(video)
