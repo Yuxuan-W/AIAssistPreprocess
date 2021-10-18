@@ -96,7 +96,7 @@ def extract_grid_feature_single_dir(model, out_path, img_root, csv_path):
                 bbox_list[img_name][bbox_name] = coordinate
 
         # extract feature from every image
-        f = h5py.File(out_path + '.hdf5', "w")
+        f = h5py.File(out_path + '_temp.hdf5', "w")
         for img_path in img_list:
             # get the image
             img = utils.read_image(img_path, format='BGR')
@@ -126,6 +126,7 @@ def extract_grid_feature_single_dir(model, out_path, img_root, csv_path):
                     group[name] = torch.Tensor.cpu(bbox_region_feature)
 
         f.close()
+        os.rename(out_path + '_temp.hdf5', out_path + '.hdf5')
 
 
 def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
@@ -191,8 +192,8 @@ def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRA
 if __name__ == "__main__":
     extract_grid_feature()
 
-    seg_info = dict()
-    annotation_list = load_annotation_list()
-    for anno in annotation_list:
-        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
-    separate_frame_grid_feature(seg_info)
+    # seg_info = dict()
+    # annotation_list = load_annotation_list()
+    # for anno in annotation_list:
+    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    # separate_frame_grid_feature(seg_info)

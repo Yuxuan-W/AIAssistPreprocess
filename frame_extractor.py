@@ -2,26 +2,24 @@ from joblib import delayed, Parallel
 import os
 import glob
 import cv2
-import numpy as np
+import shutil
 from tqdm import tqdm
-from json_utils import load_annotation_list
-from configs.preprocess_configs import FRAME_WIDTH, FRAME_HEIGHT, DOWNLOAD_ROOT, FRAME_ROOT
+from configs.preprocess_configs import FRAME_WIDTH, FRAME_HEIGHT, DOWNLOAD_ROOT, FRAME_ROOT, FRAME_RATE
 
 
 def extract_video_opencv(v_path, f_root):
     '''v_path: single video path;
        f_root: root to store frames'''
     vid = os.path.basename(v_path)[0:-4]
-    out_dir = os.path.join(f_root, vid)
-    f_root = f_root + '/' + vid
-    if not os.path.exists(f_root):
-        os.makedirs(f_root)
+    out_dir = os.path.join(f_root, vid + '_temp')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    out_dir_final = os.path.join(f_root, vid)
 
     vidcap = cv2.VideoCapture(v_path)
     width = vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)  # float
     height = vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    fps = vidcap.get(cv2.CAP_PROP_FPS)
-    interval = 1 / fps
+    interval = 1 / FRAME_RATE
     # float
     if (width == 0) or (height == 0):
         print(v_path, 'not successfully loaded, drop ..');
@@ -29,15 +27,12 @@ def extract_video_opencv(v_path, f_root):
     new_dim = (FRAME_WIDTH, FRAME_HEIGHT)
 
     success, image = vidcap.read()
-    count = 1
+    count = 0
     interval_index = 0
     while success:
-        time_second = count / fps
+        time_second = count / FRAME_RATE
 
         if time_second >= interval_index * interval:
-            if not os.path.exists(out_dir):
-                os.makedirs(out_dir)
-
             image = cv2.resize(image, new_dim, interpolation=cv2.INTER_LINEAR)
             cv2.imwrite(os.path.join(out_dir, '%.3f.jpg' % time_second), image,
                         [cv2.IMWRITE_JPEG_QUALITY, 80])  # quality from 0-100, 95 is default, high is good
@@ -46,6 +41,8 @@ def extract_video_opencv(v_path, f_root):
         success, image = vidcap.read()
         count += 1
     vidcap.release()
+    print(vid + " finished")
+    os.rename(out_dir, out_dir_final)
 
 
 def resize_dim(w, h, target):
@@ -83,13 +80,18 @@ def sampling_frame(v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
     if not os.path.exists(f_root):
         os.makedirs(f_root)
     video_list = glob.glob(os.path.join(v_root, '*.mp4'))
+    target_list = []
     for video in video_list:
-        if os.path.exists(os.path.join(f_root, video[-15:-4])):
-            video_list.remove(video)
+        if not os.path.exists(f_root + '/' + video[-15:-4]):
+            target_list.append(video)
+
+    temp_folder_list = glob.glob(os.path.join(f_root, '*_temp'))
+    for temp_folder in temp_folder_list:
+        shutil.rmtree(temp_folder)
 
     # sampling from video
     Parallel(n_jobs=32)(delayed(extract_video_opencv)(p, f_root)
-                        for p in tqdm(video_list, desc="Loop over videos"))
+                        for p in tqdm(target_list, desc="Loop over videos"))
 
 
 if __name__ == '__main__':
