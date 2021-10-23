@@ -31,7 +31,7 @@ def download_data():
     #                     for annotation in tqdm(annotation_list, desc="Downloading from Youtube"))
     # for annotation in tqdm(annotation_list, desc="Downloading from Youtube"):
     #     download_single_video(annotation[0]['videoID'])
-    with open('textlist.txt') as f:
+    with open('vidlist.txt') as f:
         vid_list = f.readlines()
     for vid in tqdm(vid_list, desc='Downloading from Youtube'):
         vid = vid[0:11]

@@ -4,11 +4,11 @@ import re
 import torch
 import h5py
 from transformers import DistilBertTokenizer, DistilBertModel
-from json_utils import load_annotation_list, load_json_list
+from json_utils import load_annotation_list, load_jsonl
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from configs.preprocess_configs import NUM_JOBS, TEXT_FEATURE_ROOT_QUERY, \
-    TEXT_FEATURE_ROOT_SUBTITLE, SUBTITLE_ROOT
+from configs.preprocess_configs import (NUM_JOBS, TEXT_FEATURE_ROOT_QUERY,
+                                        TEXT_FEATURE_ROOT_SUBTITLE, SUBTITLE_ROOT)
 
 
 def get_timeline(sub, tokenizer):
@@ -23,9 +23,9 @@ def get_timeline(sub, tokenizer):
 
 
 def extract_from_subtitle(tokenizer, model, sub_path, save_path, max_length=256):
-    sub_list = load_json_list(sub_path)
-    vid = sub_path.split('/')[-1]
-    f = h5py.File(save_path + vid + '_feature.hdf5', 'w')
+    sub_list = load_jsonl(sub_path)
+    vid = sub_path[-17:-6]
+    f = h5py.File(save_path + '/' + vid + '.hdf5', 'w')
     for sub in sub_list:
         # Get all text
         seg_id = sub['seg_id']
@@ -34,23 +34,37 @@ def extract_from_subtitle(tokenizer, model, sub_path, save_path, max_length=256)
         for i in range(1, len(sub)):
             text = text + ' ' + sub[i]['text']
 
-        # Get token and ids
+        # Get feature, timeline and token
         with torch.no_grad():
-            feature = torch.Tensor()
-            encoded_input = tokenizer(text, return_tensors='pt')
-            ids = encoded_input.data['input_ids'][:, 1: -1]
-            attention_mask = encoded_input.data['attention_mask'][:, 1: -1]
-
-            # Get feature and timeline
             i = 0
-            while i * max_length < ids.size(1):
-                encoded_input.data['input_ids'] = ids[:, i*max_length: (i + 1)*max_length]
-                encoded_input.data['attention_mask'] = attention_mask[:, i*max_length: (i + 1)*max_length]
+            token = []
+            feature = torch.Tensor()
+            text_word_list = text.split(' ')
+            while i * max_length < len(text_word_list):
+                # Get sub_text <= max_length
+                sub_text_word_list = text_word_list[i * max_length: (i + 1) * max_length]
+                sub_text = ''
+                for word in sub_text_word_list:
+                    sub_text = sub_text + word + ' '
+
+                # Get feature and timeline
+                encoded_input = tokenizer(sub_text, return_tensors='pt')
+                encoded_input.data['input_ids'] = encoded_input.data['input_ids'][:, 1: -1]
+                encoded_input.data['attention_mask'] = encoded_input.data['attention_mask'][:, 1: -1]
                 output = model(**encoded_input)
                 feature = torch.cat((feature, output['last_hidden_state']), dim=-2)
+
+                # Get token
+                sub_token = tokenizer.tokenize(sub_text)
+                token = token + sub_token
                 i += 1
+
+            # Get timeline
             timeline = get_timeline(sub, tokenizer)
+
+            # Write into h5
             group = f.create_group(seg_id)
+            group['token'] = token
             group['feature'] = feature
             group['timeline'] = timeline
     f.close()
@@ -105,7 +119,7 @@ def extract_from_query(tokenizer, model, anno, save_path):
         token_dict[qid] = tokenizer.tokenize(text)
 
     with torch.no_grad():
-        f = h5py.File(save_path + vid + '_feature.hdf5', 'w')
+        f = h5py.File(save_path + '/' + vid + '.hdf5', 'w')
         for query in query_list:
             # generate feature
             encoded_input = tokenizer(query['Question'], return_tensors='pt')

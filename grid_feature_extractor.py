@@ -170,6 +170,7 @@ def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRA
     h5_list = glob.glob(os.path.join(frame_output_root, '*.hdf5'))
     for h5 in h5_list:
         vid = h5[-16:-5]
+        print(vid)
         seg = segment[vid]
         h5_dir = frame_output_root + '/' + vid
         if not os.path.exists(h5_dir):
@@ -190,10 +191,10 @@ def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRA
 
 
 if __name__ == "__main__":
-    extract_grid_feature()
+    # extract_grid_feature()
 
-    # seg_info = dict()
-    # annotation_list = load_annotation_list()
-    # for anno in annotation_list:
-    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
-    # separate_frame_grid_feature(seg_info)
+    seg_info = dict()
+    annotation_list = load_annotation_list()
+    for anno in annotation_list:
+        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    separate_frame_grid_feature(seg_info)

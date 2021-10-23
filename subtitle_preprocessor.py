@@ -1,7 +1,6 @@
 """
 Running basic pre-processing for the .srt subtitle files
 """
-import json
 import re
 import os
 import pysrt
@@ -9,13 +8,8 @@ import glob
 
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from json_utils import load_annotation_list
+from json_utils import load_annotation_list, save_jsonl
 from configs.preprocess_configs import DOWNLOAD_ROOT, SUBTITLE_ROOT
-
-def save_json(data, filename):
-    """data corresponds to a single file"""
-    with open(filename, "w") as f:
-        f.write("\n".join([json.dumps(data)]))
 
 
 def convert_sub_time_to_seconds(sub_time):
@@ -117,11 +111,11 @@ def preprocess_subtitles_single_video(video_path, save_path, segment_list):
             ))
 
     # 划分入segment，并在segment分界点拆开
-    seg_sub_data = [[] for i in range(len(segment_list))]
-    seg_index = 0
+    split_point_list = [segment_list[0][0]] + [segment_list[i][1] for i in range(len(segment_list))]
+    split_point_index = 0
     sentence_index = 0
-    while sentence_index < len(sub_data) and seg_index < len(segment_list):
-        split_point = segment_list[seg_index][1]
+    while sentence_index < len(sub_data) and split_point_index < len(split_point_list):
+        split_point = split_point_list[split_point_index]
         if sub_data[sentence_index]['start'] < split_point < sub_data[sentence_index]['end']:
             text = sub_data[sentence_index]['text']
             start = sub_data[sentence_index]['start']
@@ -146,25 +140,34 @@ def preprocess_subtitles_single_video(video_path, save_path, segment_list):
                 start=split_point,
                 end=end
             ))
-
-            seg_sub_data[seg_index].append(sub_data[sentence_index])
-            seg_index += 1
-
+            split_point_index += 1
+            sentence_index += 1
+        elif sub_data[sentence_index]['start'] >= split_point:
+            split_point_index += 1
         else:
-            seg_sub_data[seg_index].append(sub_data[sentence_index])
+            sentence_index += 1
 
-        sentence_index += 1
+    # attach to every segment
+    seg_sub_data = [[] for i in range(len(segment_list))]
+    for sub in sub_data:
+        if not sub['text'] == '':
+            for seg_index in range(len(segment_list)):
+                seg_start = segment_list[seg_index][0]
+                seg_end = segment_list[seg_index][1]
+                sentence_start = sub['start']
+                sentence_end = sub['end']
+                if seg_start <= sentence_start and sentence_end <= seg_end:
+                    seg_sub_data[seg_index].append(sub)
 
     # write to json
-    save_path = save_path + '/' + video_id
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    srt_data_list = []
     for seg_index in range(len(segment_list)):
         srt_data = dict(
             seg_id=video_id + '_' + str(seg_index),
             sub=seg_sub_data[seg_index]
         )
-        save_json(srt_data, save_path + '/' + srt_data['seg_id'] + '.json')
+        srt_data_list.append(srt_data)
+    save_jsonl(srt_data_list, os.path.join(save_path, video_id + '.jsonl'))
 
 
 def preprocess_subtitles(segment, srt_dir=DOWNLOAD_ROOT, save_path=SUBTITLE_ROOT):
@@ -173,8 +176,9 @@ def preprocess_subtitles(segment, srt_dir=DOWNLOAD_ROOT, save_path=SUBTITLE_ROOT
 
     print("Start preprocessing srt files from %s ..." % srt_dir)
     srt_paths = glob.glob(os.path.join(srt_dir, "*.srt"))
-    for srt in srt_paths:
-        if os.path.exists(save_path + srt[-19:-7]):
+    for i in range(len(srt_paths)):
+        srt = srt_paths[i]
+        if os.path.exists(save_path + '/' + srt[-19:-7] + '.jsonl'):
             srt_paths.remove(srt)
     Parallel(n_jobs=32)(delayed(preprocess_subtitles_single_video)
                         (srt, save_path, segment[os.path.basename(srt).split('.')[0]])
