@@ -326,11 +326,11 @@ class VQASR_segment(Dataset):
 
 if __name__ == "__main__":
     train_set = VQASR_query()
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=False)
+    train_loader = DataLoader(dataset=train_set, batch_size=2, shuffle=True, collate_fn=collate_for_concat_fusion)
     for batch in train_loader:
         b = batch
 
     test_set = VQASR_segment(dset_name='test')
-    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=True)
     for batch in test_loader:
         b = batch
