@@ -156,14 +156,14 @@ def extract_grid_feature(query_input_root=ANNOTATION_ROOT,
                               for img_root in tqdm(img_root_list, desc='Extracting feature from query images'))
 
     # extract feature from video frame
-    if not os.path.exists(frame_output_root):
-        os.makedirs(frame_output_root)
-    video_root_list = glob.glob(os.path.join(frame_input_root, '*'))
-    Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
-                              (model,
-                               out_path=frame_output_root + '/' + video_root[-11:],
-                               img_root=video_root, csv_path='')
-                              for video_root in tqdm(video_root_list, desc='Extracting feature from video frames'))
+    # if not os.path.exists(frame_output_root):
+    #     os.makedirs(frame_output_root)
+    # video_root_list = glob.glob(os.path.join(frame_input_root, '*'))
+    # Parallel(n_jobs=NUM_JOBS)(delayed(extract_grid_feature_single_dir)
+    #                           (model,
+    #                            out_path=frame_output_root + '/' + video_root[-11:],
+    #                            img_root=video_root, csv_path='')
+    #                           for video_root in tqdm(video_root_list, desc='Extracting feature from video frames'))
 
 
 def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRAME):
@@ -191,10 +191,10 @@ def separate_frame_grid_feature(segment, frame_output_root=GRID_FEATURE_ROOT_FRA
 
 
 if __name__ == "__main__":
-    # extract_grid_feature()
+    extract_grid_feature()
 
-    seg_info = dict()
-    annotation_list = load_annotation_list()
-    for anno in annotation_list:
-        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
-    separate_frame_grid_feature(seg_info)
+    # seg_info = dict()
+    # annotation_list = load_annotation_list()
+    # for anno in annotation_list:
+    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    # separate_frame_grid_feature(seg_info)

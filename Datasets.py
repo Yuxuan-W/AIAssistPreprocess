@@ -11,9 +11,14 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from easydict import EasyDict as edict
 
-from json_utils import load_jsonl
+from json_utils import load_json, load_jsonl
 from feature_packager import load_from_feature_package
-from configs.preprocess_configs import ANNOTATION_PACKAGE_ROOT, FEATURE_PACKAGE_ROOT
+from configs.preprocess_configs import ANNOTATION_PACKAGE_ROOT, FEATURE_PACKAGE_ROOT, ID_FILE_ROOT
+
+
+def l2_normalize_np_array(np_array, eps=1e-5):
+    """np_array: np.ndarray, (*, D), where the last dim will be normalized"""
+    return np_array / (np.linalg.norm(np_array, axis=-1, keepdims=True) + eps)
 
 
 def pad_sequences_1d(sequences, dtype=torch.long):
@@ -147,7 +152,7 @@ def collate_for_adding_fusion(batch):
     )
 
 
-class VQASR_Dataset(Dataset):
+class VQASR_query(Dataset):
     """
     Args:
         dset_name, str, ["VQASR"]
@@ -178,19 +183,21 @@ class VQASR_Dataset(Dataset):
         }
     """
 
-    def __init__(self, dset_name="train", data_path="", query_bert_path_or_handler="", sub_feat_path_or_handler="",
-                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True, avg_pooling=False,
-                 annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
+    def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
+                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+                 avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
         assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
-            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))  # load data self.data = load_func("data_path") # query ->
+            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
         else:
             self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         self.query_bert_path_or_handler = query_bert_path_or_handler
         self.sub_feat_path_or_handler = sub_feat_path_or_handler
         self.vid_fear_path_or_handler = vid_feat_path_or_handler
+        self.normalize_vfeat = normalize_vfeat
+        self.normalize_tfeat = normalize_tfeat
 
         if avg_pooling:
             self.pooling = 'avg_pooling'
@@ -232,6 +239,14 @@ class VQASR_Dataset(Dataset):
         ctx_vis_feat = self.video_vis_feat[item['vid_name']][item['answer_segment_name'][sample_seg_idx]][self.pooling]
         ctx_text_feat = self.sub_text_feat[item['vid_name']][item['answer_segment_name'][sample_seg_idx]][self.pooling]
 
+        if self.normalize_tfeat:
+            query_text_feat = l2_normalize_np_array(query_text_feat)
+            ctx_text_feat = l2_normalize_np_array(ctx_text_feat)
+
+        if self.normalize_vfeat:
+            query_vis_feat = l2_normalize_np_array(query_vis_feat)
+            ctx_vis_feat = l2_normalize_np_array(ctx_vis_feat)
+
         return edict(
             meta=meta,
             query_text_feat=torch.from_numpy(query_text_feat),
@@ -242,12 +257,80 @@ class VQASR_Dataset(Dataset):
         )
 
 
+class VQASR_segment(Dataset):
+    def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
+                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+                 avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
+        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        self.dset_name = dset_name
+        if dset_name == 'train':
+            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+        else:
+            self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+
+        self.query_bert_path_or_handler = query_bert_path_or_handler
+        self.sub_feat_path_or_handler = sub_feat_path_or_handler
+        self.vid_fear_path_or_handler = vid_feat_path_or_handler
+        self.normalize_vfeat = normalize_vfeat
+        self.normalize_tfeat = normalize_tfeat
+
+        if avg_pooling:
+            self.pooling = 'avg_pooling'
+        else:
+            self.pooling = 'max_pooling'
+
+        # Generate iterable segment list
+        self.segment_list = []
+        vid_set = set()
+        for query in self.data:
+            vid = query['query_name'][:11]
+            vid_set.add(vid)
+
+        seg2id = load_json(os.path.join(ID_FILE_ROOT, 'id.json'))['seg2id']
+        for seg_name, seg_id in seg2id.items():
+            vid = seg_name[:11]
+            if vid in vid_set:
+                self.segment_list.append([seg_id, seg_name, vid])
+
+        # Should be loaded from h5py file
+        with h5py.File(os.path.join(feature_root, 'feature.hdf5'), 'r') as f:
+            self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
+            self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
+
+    def __len__(self):
+        return len(self.segment_list)
+
+    def __getitem__(self, index):
+        seg = self.segment_list[index]
+        seg_id = seg[0]
+        seg_name = seg[1]
+        vid = seg[2]
+
+        ctx_vis_feat = self.video_vis_feat[vid][seg_name][self.pooling]
+        ctx_text_feat = self.sub_text_feat[vid][seg_name][self.pooling]
+
+        if self.normalize_tfeat:
+            ctx_text_feat = l2_normalize_np_array(ctx_text_feat)
+
+        if self.normalize_vfeat:
+            ctx_vis_feat = l2_normalize_np_array(ctx_vis_feat)
+
+        return edict(
+            seg_id=seg_id,
+            seg_name=seg_name,
+            vid_name=vid,
+            ctx_vis_feat=torch.from_numpy(ctx_vis_feat),
+            ctx_text_feat=torch.from_numpy(ctx_text_feat)
+        )
+
+
 if __name__ == "__main__":
-    train_set = VQASR_Dataset()
-    test_set = VQASR_Dataset(dset_name='test')
-    train_loader = DataLoader(dataset=train_set, batch_size=2, shuffle=False, collate_fn=collate_for_concat_fusion)
-    test_loader = DataLoader(dataset=test_set, batch_size=2, shuffle=False, collate_fn=collate_for_concat_fusion)
-    for batch in test_loader:
-        b = batch
+    train_set = VQASR_query()
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=False)
     for batch in train_loader:
+        b = batch
+
+    test_set = VQASR_segment(dset_name='test')
+    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    for batch in test_loader:
         b = batch

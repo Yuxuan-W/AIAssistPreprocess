@@ -150,13 +150,13 @@ def extract_text_feature(sub_input_path=SUBTITLE_ROOT, sub_save_path=TEXT_FEATUR
                               (tokenizer, model, anno, query_save_path)
                               for anno in tqdm(anno_path, desc='Loop from queries'))
 
-    # Extract from subtitle
-    if not os.path.exists(sub_save_path):
-        os.makedirs(sub_save_path)
-    sub_path_list = glob.glob(os.path.join(sub_input_path, '*'))
-    Parallel(n_jobs=NUM_JOBS)(delayed(extract_from_subtitle)
-                       (tokenizer, model, sub_path, sub_save_path)
-                       for sub_path in tqdm(sub_path_list, desc='Loop from subtitles'))
+    # # Extract from subtitle
+    # if not os.path.exists(sub_save_path):
+    #     os.makedirs(sub_save_path)
+    # sub_path_list = glob.glob(os.path.join(sub_input_path, '*'))
+    # Parallel(n_jobs=NUM_JOBS)(delayed(extract_from_subtitle)
+    #                    (tokenizer, model, sub_path, sub_save_path)
+    #                    for sub_path in tqdm(sub_path_list, desc='Loop from subtitles'))
 
 
 if __name__ == "__main__":

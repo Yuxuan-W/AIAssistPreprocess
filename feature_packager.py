@@ -41,7 +41,10 @@ def load_from_feature_package(group_handle):
                         token_list = group_handle[vid][sub_group][data][:].tolist()
                         feature_dict[vid][sub_group][data] = [str(token)[2:-1] for token in token_list]
                     else:
-                        feature_dict[vid][sub_group][data] = group_handle[vid][sub_group][data][:]
+                        if len(group_handle[vid][sub_group][data][:]) == 4:
+                            feature_dict[vid][sub_group][data] = group_handle[vid][sub_group][data][:].squeeze()
+                        else:
+                            feature_dict[vid][sub_group][data] = group_handle[vid][sub_group][data][:]
 
     return feature_dict
 

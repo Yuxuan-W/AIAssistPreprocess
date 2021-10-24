@@ -16,7 +16,8 @@ def frame_feature_pool(seg_h5, clip_length=CLIP_LENGTH):
     clip_start_time_list = []
     clip_feature_max_pooling = []
     clip_feature_avg_pooling = []
-    for time in time_list:
+    for i in range(len(time_list) - 1):
+        time = time_list[i]
         if time >= (clip_idx + 1) * clip_length + seg_start_time:
             feature_arr = np.array(feature_list)
             clip_start_time_list.append(clip_idx * clip_length + seg_start_time)
@@ -24,7 +25,12 @@ def frame_feature_pool(seg_h5, clip_length=CLIP_LENGTH):
             clip_feature_avg_pooling.append(np.average(feature_arr, axis=0))
             clip_idx += 1
             feature_list = []
-        feature_list.append(seg_h5[str(time)][0][:][:][:])
+        feature_list.append(seg_h5[str(time)][0][:].squeeze())
+    feature_arr = np.array(feature_list)
+    clip_start_time_list.append(clip_idx * clip_length + seg_start_time)
+    clip_feature_max_pooling.append(np.max(feature_arr, axis=0))
+    clip_feature_avg_pooling.append(np.average(feature_arr, axis=0))
+
     clip_feature = dict(
         start_time=clip_start_time_list,
         max_pooling=np.array(clip_feature_max_pooling),
