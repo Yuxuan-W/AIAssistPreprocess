@@ -107,7 +107,7 @@ def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
     train_package = []
     test_package = []
     for _, query_name in id2query.items():
-        vid = query_name.split('_')[0]
+        vid = query_name[:11]
         query_item = query_dict_by_name[query_name]
         if vid in test_set:
             test_package.append(query_item)
