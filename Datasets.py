@@ -155,7 +155,7 @@ def collate_for_adding_fusion(batch):
 class VQASR_query(Dataset):
     """
     Args:
-        dset_name, str, ["VQASR"]
+        dset_name, str, "train" or "test"
         avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
 
     Return:
@@ -324,13 +324,315 @@ class VQASR_segment(Dataset):
         )
 
 
+class VQASR_train(Dataset):
+    """
+    Args:
+        avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
+
+    Return:
+        a dict: {
+            "meta": {
+                "query_id": int,
+                "text_query": str,                                  # purely text query
+                "original_query": str,
+                "query_image_path": str,
+                "vid_name": str,                                    # youtube_id (11)
+                "answer_segment_name": list[str],                   # name of segments: ["xtuiYd45q1W_segment1",...]
+                "answer_segment_id": list[segment_id],              # unique_segment_id
+                "answer_segment_info": list[[st,ed], ... [st,ed]],  # start_time, end_time of coresponding segment
+
+                #   modified in v2:
+                "pos_seg_id_for_training": int,                  # sample one ground truth segment for training
+                "pos_seg_name_for_training": str,
+                "intra_neg_seg_id_for_training": int,                  # sample one intra wrong segment for training
+                "intra_neg_seg_name_for_training": str,
+                "inter_neg_seg_id_for_training": int,                  # sample one inter wrong segment for training
+                "inter_neg_seg_name_for_training": str,
+            }
+
+            "query_text_feat": torch.tensor, (L, D_q)                       # query feature
+            "query_vis_feat": torch.tensor,  (n_region, 2048)               # image feature&region feature
+            "image_2_text_alignment": list[list]                              # image to token alignment
+
+            #   modified in v2:                                             # n_sample sub/video feature include the groundtruth
+            "pos_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)
+            "intra_neg_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)
+            "intra_neg_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)
+            "pos_vis_feat": torch.tensor, (n_sample, n_clip_in_segment, dim_video)
+            "intra_neg_vis_feat": torch.tensor, (n_clip_in_segment, dim_video)
+            "intra_neg_vis_feat": torch.tensor, (n_clip_in_segment, dim_video)
+        }
+    """
+
+    def __init__(self, query_bert_path_or_handler="", sub_feat_path_or_handler="",
+                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+                 avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
+
+        self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+
+        # return dict should also be modified if change the neg number
+        self.n_neg_intra = 1
+        self.n_neg_inter = 1
+
+        self.query_bert_path_or_handler = query_bert_path_or_handler
+        self.sub_feat_path_or_handler = sub_feat_path_or_handler
+        self.vid_fear_path_or_handler = vid_feat_path_or_handler
+        self.normalize_vfeat = normalize_vfeat
+        self.normalize_tfeat = normalize_tfeat
+
+        if avg_pooling:
+            self.pooling = 'avg_pooling'
+        else:
+            self.pooling = 'max_pooling'
+
+        # Generate iterable segment list, split segment to train/test set
+        self.segment_list = []
+        vid_set = set()
+        for query in self.data:
+            vid = query['query_name'][:11]
+            vid_set.add(vid)
+
+        seg2id = load_json(os.path.join(ID_FILE_ROOT, 'id.json'))['seg2id']
+        for seg_name, seg_id in seg2id.items():
+            vid = seg_name[:11]
+            if vid in vid_set:
+                self.segment_list.append([seg_id, seg_name, vid])
+
+        # Should be loaded from h5py file
+        with h5py.File(os.path.join(feature_root, 'feature.hdf5'), 'r') as f:
+            self.query_text_feat = load_from_feature_package(f['query_text_feature'])
+            self.query_img_feat = load_from_feature_package(f['query_grid_feature'])
+            self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
+            self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        item = self.data[index]
+
+        # Random sampling
+        sample_seg_idx = random.sample(range(len(item['answer_segment_id'])), 1)[0]
+        sample_gt_seg_id = item['answer_segment_id'][sample_seg_idx]
+        sample_gt_seg_name = item['answer_segment_name'][sample_seg_idx]
+        negative_seg_id_intra = []
+        negative_seg_id_inter = []
+        negative_seg_name_intra = []
+        negative_seg_name_inter = []
+        for [seg_id, seg_name, vid] in self.segment_list:
+            if seg_name in item['answer_segment_name']:
+                continue
+            else:
+                if vid == item['vid_name']:
+                    negative_seg_id_intra.append(seg_id)
+                    negative_seg_name_intra.append(seg_name)
+                else:
+                    negative_seg_id_inter.append(seg_id)
+                    negative_seg_name_inter.append(seg_name)
+
+        negative_idx_intra = random.sample(range(len(negative_seg_name_intra)), self.n_neg_intra)
+        negative_idx_inter = random.sample(range(len(negative_seg_name_inter)), self.n_neg_inter)
+        negative_seg_id_intra_sampled = [negative_seg_id_intra[idx] for idx in negative_idx_intra]
+        negative_seg_id_inter_sampled = [negative_seg_id_inter[idx] for idx in negative_idx_inter]
+        negative_seg_name_intra_sampled = [negative_seg_name_intra[idx] for idx in negative_idx_intra]
+        negative_seg_name_inter_sampled = [negative_seg_name_inter[idx] for idx in negative_idx_inter]
+        sample_all_seg_id = [sample_gt_seg_id] + negative_seg_id_intra_sampled + negative_seg_id_inter_sampled
+        sample_all_seg_name = [sample_gt_seg_name] + negative_seg_name_intra_sampled + negative_seg_name_inter_sampled
+
+        meta = edict(
+            query_id=item['query_id'],
+            query_name=item['query_name'],
+            text_query=item['text_query'],
+            original_query=item['original_query'],
+            query_img_path=item['query_img_path'],
+            vid_name=item['vid_name'],
+            answer_segment_name=item['answer_segment_name'],
+            answer_segment_id=item['answer_segment_id'],
+            answer_segment_info=item['answer_segment_info'],
+            pos_seg_id=sample_gt_seg_id,
+            pos_seg_name=sample_gt_seg_name,
+            intra_neg_seg_id=sample_all_seg_id[1],
+            intra_neg_seg_name=sample_all_seg_name[1],
+            inter_neg_seg_id=sample_all_seg_id[2],
+            inter_neg_seg_name=sample_all_seg_name[2],
+        )
+
+        query_text_feat = self.query_text_feat[item['vid_name']][item['query_name']]['feature'][0]
+        img_2_text_alignment = self.query_text_feat[item['vid_name']][item['query_name']]['img_alignment']
+
+        query_vis_feat = self.query_img_feat[item['vid_name']][item['query_img_path'].split('/')[-1]]
+
+        ctx_vis_feat = [self.video_vis_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in sample_all_seg_name]
+        ctx_text_feat = [self.sub_text_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in sample_all_seg_name]
+
+        if self.normalize_tfeat:
+            query_text_feat = l2_normalize_np_array(query_text_feat)
+            for i in range(len(ctx_text_feat)):
+                ctx_text_feat[i] = torch.from_numpy(l2_normalize_np_array(ctx_text_feat[i]))
+
+        if self.normalize_vfeat:
+            query_vis_feat = l2_normalize_np_array(query_vis_feat)
+            for i in range(len(ctx_vis_feat)):
+                ctx_vis_feat[i] = torch.from_numpy(l2_normalize_np_array(ctx_vis_feat[i]))
+
+        return edict(
+            meta=meta,
+            query_text_feat=torch.from_numpy(query_text_feat),
+            query_vis_feat=torch.from_numpy(query_vis_feat),
+            image_2_text_alignment=img_2_text_alignment,
+            pos_vis_feat=ctx_vis_feat[0],
+            intra_neg_vis_feat=ctx_vis_feat[1],
+            inter_neg_vis_feat=ctx_vis_feat[2],
+            pos_text_feat=ctx_text_feat[0],
+            intra_neg_text_feat=ctx_text_feat[1],
+            inter_neg_text_feat=ctx_text_feat[2],
+        )
+
+
+class VQASR_test(Dataset):
+    """
+    Args:
+        avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
+
+    Return:
+        a dict: {
+            "meta": {
+                "query_id": int,
+                "text_query": str,                                  # purely text query
+                "original_query": str,
+                "query_image_path": str,
+                "vid_name": str,                                    # youtube_id (11)
+                "answer_segment_name": list[str],                   # name of segments: ["xtuiYd45q1W_segment1",...]
+                "answer_segment_id": list[segment_id],              # unique_segment_id
+                "answer_segment_info": list[[st,ed], ... [st,ed]],  # start_time, end_time of coresponding segment
+
+                #   modified in v2:
+                "seg_id_for_training": int,                  # sample one segment for training, might be truth or not
+                "seg_name_for_training": str,
+            }
+
+            "query_text_feat": torch.tensor, (L, D_q)                       # query feature
+            "query_vis_feat": torch.tensor,  (n_region, 2048)               # image feature&region feature
+            "image_2_text_alignment": list[list]                              # image to token alignment
+
+            #   modified in v2:
+            "ctx_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)     # sampled sub/video feature
+            "ctx_vis_feat": torch.tensor, (n_sample, n_clip_in_segment, dim_video)
+        }
+    """
+
+    def __init__(self, query_bert_path_or_handler="", sub_feat_path_or_handler="",
+                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+                 avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
+
+        self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+
+        self.query_bert_path_or_handler = query_bert_path_or_handler
+        self.sub_feat_path_or_handler = sub_feat_path_or_handler
+        self.vid_fear_path_or_handler = vid_feat_path_or_handler
+        self.normalize_vfeat = normalize_vfeat
+        self.normalize_tfeat = normalize_tfeat
+
+        if avg_pooling:
+            self.pooling = 'avg_pooling'
+        else:
+            self.pooling = 'max_pooling'
+
+        # Generate iterable segment list, split segment to train/test set
+        self.pairlist = []
+        vid_set = set()
+        for query in self.data:
+            vid = query['query_name'][:11]
+            vid_set.add(vid)
+
+        seg2id = load_json(os.path.join(ID_FILE_ROOT, 'id.json'))['seg2id']
+        for query in self.data:
+            query_id = query['query_id']
+            query_name = query['query_name']
+            for seg_name, seg_id in seg2id.items():
+                vid = seg_name[:11]
+                if vid in vid_set:
+                    self.pairlist.append(dict(
+                        query_item=query,
+                        seg_name=seg_name,
+                        seg_id=seg_id,
+                        vid=vid
+                    ))
+
+        # Should be loaded from h5py file
+        with h5py.File(os.path.join(feature_root, 'feature.hdf5'), 'r') as f:
+            self.query_text_feat = load_from_feature_package(f['query_text_feature'])
+            self.query_img_feat = load_from_feature_package(f['query_grid_feature'])
+            self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
+            self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
+
+    def __len__(self):
+        return len(self.pairlist)
+
+    def __getitem__(self, index):
+        pair = self.pairlist[index]
+        item = pair['query_item']
+        seg_name = pair['seg_name']
+        seg_id = pair['seg_id']
+        vid = pair['vid']
+        meta = edict(
+            query_id=item['query_id'],
+            query_name=item['query_name'],
+            text_query=item['text_query'],
+            original_query=item['original_query'],
+            query_img_path=item['query_img_path'],
+            vid_name=item['vid_name'],
+            answer_segment_name=item['answer_segment_name'],
+            answer_segment_id=item['answer_segment_id'],
+            answer_segment_info=item['answer_segment_info'],
+            seg_id_for_training=seg_id,
+            seg_name_for_training=seg_name
+        )
+
+        query_text_feat = self.query_text_feat[item['vid_name']][item['query_name']]['feature'][0]
+        img_2_text_alignment = self.query_text_feat[item['vid_name']][item['query_name']]['img_alignment']
+
+        query_vis_feat = self.query_img_feat[item['vid_name']][item['query_img_path'].split('/')[-1]]
+
+        ctx_vis_feat = self.video_vis_feat[vid][seg_name][self.pooling]
+        ctx_text_feat = self.sub_text_feat[vid][seg_name][self.pooling]
+
+        if self.normalize_tfeat:
+            query_text_feat = l2_normalize_np_array(query_text_feat)
+            ctx_text_feat = l2_normalize_np_array(ctx_text_feat)
+
+        if self.normalize_vfeat:
+            query_vis_feat = l2_normalize_np_array(query_vis_feat)
+            ctx_vis_feat = l2_normalize_np_array(ctx_vis_feat)
+
+        return edict(
+            meta=meta,
+            query_text_feat=torch.from_numpy(query_text_feat),
+            query_vis_feat=torch.from_numpy(query_vis_feat),
+            image_2_text_alignment=img_2_text_alignment,
+            ctx_vis_feat=torch.from_numpy(ctx_vis_feat),
+            ctx_text_feat=torch.from_numpy(ctx_text_feat)
+        )
+
+
 if __name__ == "__main__":
-    train_set = VQASR_query()
-    train_loader = DataLoader(dataset=train_set, batch_size=2, shuffle=True, collate_fn=collate_for_concat_fusion)
+    # train_set = VQASR_query()
+    # train_loader = DataLoader(dataset=train_set, batch_size=2, shuffle=True, collate_fn=collate_for_concat_fusion)
+    # for batch in train_loader:
+    #     b = batch
+    #
+    # test_set = VQASR_segment(dset_name='test')
+    # test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    # for batch in test_loader:
+    #     b = batch
+
+    train_set = VQASR_train()
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
     for batch in train_loader:
         b = batch
 
-    test_set = VQASR_segment(dset_name='test')
-    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=True)
+    test_set = VQASR_test()
+    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     for batch in test_loader:
         b = batch
+
