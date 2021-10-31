@@ -371,6 +371,7 @@ class VQASR_train(Dataset):
         self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
 
         # return dict should also be modified if change the neg number
+        self.n_pos = 1
         self.n_neg_intra = 1
         self.n_neg_inter = 1
 
@@ -405,13 +406,10 @@ class VQASR_train(Dataset):
             self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
             self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
 
-        # Sample negative
-        self.data_with_negative = []
-        for item in self.data:
-            # Random sampling
-            sample_seg_idx = random.sample(range(len(item['answer_segment_id'])), 1)[0]
-            sample_gt_seg_id = item['answer_segment_id'][sample_seg_idx]
-            sample_gt_seg_name = item['answer_segment_name'][sample_seg_idx]
+        # Add negative list
+        for item_idx in range(len(self.data)):
+            item = self.data[item_idx]
+
             negative_seg_id_intra = []
             negative_seg_id_inter = []
             negative_seg_name_intra = []
@@ -427,28 +425,36 @@ class VQASR_train(Dataset):
                         negative_seg_id_inter.append(seg_id)
                         negative_seg_name_inter.append(seg_name)
 
-            negative_idx_intra = random.sample(range(len(negative_seg_name_intra)), self.n_neg_intra)
-            negative_idx_inter = random.sample(range(len(negative_seg_name_inter)), self.n_neg_inter)
-            negative_seg_id_intra_sampled = [negative_seg_id_intra[idx] for idx in negative_idx_intra]
-            negative_seg_id_inter_sampled = [negative_seg_id_inter[idx] for idx in negative_idx_inter]
-            negative_seg_name_intra_sampled = [negative_seg_name_intra[idx] for idx in negative_idx_intra]
-            negative_seg_name_inter_sampled = [negative_seg_name_inter[idx] for idx in negative_idx_inter]
-            sample_all_seg_id = [sample_gt_seg_id] + negative_seg_id_intra_sampled + negative_seg_id_inter_sampled
-            sample_all_seg_name = [sample_gt_seg_name] + negative_seg_name_intra_sampled + negative_seg_name_inter_sampled
-
-            self.data_with_negative.append(dict(
-                query_item=item,
-                sampled_seg_id=sample_all_seg_id,
-                sampled_seg_name=sample_all_seg_name
-            ))
+            self.data[item_idx]['intra_negative_segment_name'] = negative_seg_name_intra
+            self.data[item_idx]['intra_negative_segment_id'] = negative_seg_id_intra
+            self.data[item_idx]['inter_negative_segment_name'] = negative_seg_name_inter
+            self.data[item_idx]['inter_negative_segment_id'] = negative_seg_id_inter
 
     def __len__(self):
-        return len(self.data_with_negative)
+        return len(self.data)
 
     def __getitem__(self, index):
-        item = self.data_with_negative[index]['query_item']
-        sampled_seg_id = self.data_with_negative[index]['sampled_seg_id']
-        sampled_seg_name = self.data_with_negative[index]['sampled_seg_name']
+        item = self.data[index]
+
+        # sample positive and negative segment
+        positive_seg_id = item['answer_segment_id']
+        positive_seg_name = item['answer_segment_name']
+        negative_seg_name_intra = item['intra_negative_segment_name']
+        negative_seg_name_inter = item['inter_negative_segment_name']
+        negative_seg_id_intra = item['intra_negative_segment_id']
+        negative_seg_id_inter = item['inter_negative_segment_id']
+
+        positive_idx = random.sample(range(len(positive_seg_name)), self.n_pos)
+        negative_idx_intra = random.sample(range(len(negative_seg_name_intra)), self.n_neg_intra)
+        negative_idx_inter = random.sample(range(len(negative_seg_name_inter)), self.n_neg_inter)
+
+        positive_seg_id_sampled = [positive_seg_id[idx] for idx in positive_idx]
+        negative_seg_id_intra_sampled = [negative_seg_id_intra[idx] for idx in negative_idx_intra]
+        negative_seg_id_inter_sampled = [negative_seg_id_inter[idx] for idx in negative_idx_inter]
+
+        positive_seg_name_sampled = [positive_seg_name[idx] for idx in positive_idx]
+        negative_seg_name_intra_sampled = [negative_seg_name_intra[idx] for idx in negative_idx_intra]
+        negative_seg_name_inter_sampled = [negative_seg_name_inter[idx] for idx in negative_idx_inter]
 
         meta = edict(
             query_id=item['query_id'],
@@ -460,12 +466,12 @@ class VQASR_train(Dataset):
             answer_segment_name=item['answer_segment_name'],
             answer_segment_id=item['answer_segment_id'],
             answer_segment_info=item['answer_segment_info'],
-            pos_seg_id=sampled_seg_id[0],
-            pos_seg_name=sampled_seg_name[0],
-            intra_neg_seg_id=sampled_seg_id[1],
-            intra_neg_seg_name=sampled_seg_name[1],
-            inter_neg_seg_id=sampled_seg_id[2],
-            inter_neg_seg_name=sampled_seg_name[2],
+            pos_seg_id=positive_seg_id_sampled[0],  # note that this [0] need all n_pos/n_neg = 1
+            pos_seg_name=positive_seg_name_sampled[0],
+            intra_neg_seg_id=negative_seg_id_intra_sampled[0],
+            intra_neg_seg_name=negative_seg_name_intra_sampled[0],
+            inter_neg_seg_id=negative_seg_id_inter_sampled[0],
+            inter_neg_seg_name=negative_seg_name_inter_sampled[0]
         )
 
         query_text_feat = self.query_text_feat[item['vid_name']][item['query_name']]['feature'][0]
@@ -473,8 +479,11 @@ class VQASR_train(Dataset):
 
         query_vis_feat = self.query_img_feat[item['vid_name']][item['query_img_path'].split('/')[-1]]
 
-        ctx_vis_feat = [self.video_vis_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in sampled_seg_name]
-        ctx_text_feat = [self.sub_text_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in sampled_seg_name]
+        ctx_vis_feat = [self.video_vis_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in
+                        positive_seg_name_sampled + negative_seg_name_intra_sampled + negative_seg_name_inter_sampled]
+
+        ctx_text_feat = [self.sub_text_feat[seg_name[:11]][seg_name][self.pooling] for seg_name in
+                         positive_seg_name_sampled + negative_seg_name_intra_sampled + negative_seg_name_inter_sampled]
 
         if self.normalize_tfeat:
             query_text_feat = l2_normalize_np_array(query_text_feat)
@@ -558,8 +567,6 @@ class VQASR_test(Dataset):
 
         seg2id = load_json(os.path.join(ID_FILE_ROOT, 'id.json'))['seg2id']
         for query in self.data:
-            query_id = query['query_id']
-            query_name = query['query_name']
             for seg_name, seg_id in seg2id.items():
                 vid = seg_name[:11]
                 if vid in vid_set:
