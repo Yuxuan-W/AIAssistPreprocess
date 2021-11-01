@@ -157,7 +157,6 @@ class VQASR_query(Dataset):
     Args:
         dset_name, str, "train" or "test"
         avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
-
     Return:
         a dict: {
             "meta": {
@@ -169,44 +168,26 @@ class VQASR_query(Dataset):
                 "answer_segment_name": list[str],                   # name of segments: ["xtuiYd45q1W_segment1",...]
                 "answer_segment_id": list[segment_id],              # unique_segment_id
                 "answer_segment_info": list[[st,ed], ... [st,ed]],  # start_time, end_time of coresponding segment
-
                 "sample_seg_id_for_training": int,                  # sample one segment for training
                 #####
             }
-
             "query_text_feat": torch.tensor, (L, D_q)                       # query feature
             "query_vis_feat": torch.tensor,  (n_region, 2048)               # image feature&region feature
             "image_2_text_alignment": list[list]                              # image to token alignment
             "ctx_vis_feat": torch.tensor, (n_clip_in_segment, dim_video)     # video feature
             "ctx_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)      # sub feature
-
         }
     """
 
-    def __init__(self, dset_name="train", query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
+    def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
                  vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
         assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
-            annotation = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
         else:
-            annotation = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
-
-        assert query_type in ['all', 'text', 'video', 'text_video'], \
-            "dset_name should be within 'all', 'text', 'video', 'text_video'"
-        self.data = []
-        for anno in annotation:
-            q_type = anno['query_type']
-
-            if query_type == 'text' and not q_type == 'Text Only':
-                continue
-            elif query_type == 'video' and not q_type == 'Video Only':
-                continue
-            elif query_type == 'text_video' and not q_type == 'Text and Video':
-                continue
-            else:
-                self.data.append(anno)
+            self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         self.query_bert_path_or_handler = query_bert_path_or_handler
         self.sub_feat_path_or_handler = sub_feat_path_or_handler
@@ -273,8 +254,7 @@ class VQASR_query(Dataset):
 
 
 class VQASR_segment(Dataset):
-    def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
-                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+    def __init__(self, dset_name="train", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
         assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
         self.dset_name = dset_name
@@ -283,9 +263,6 @@ class VQASR_segment(Dataset):
         else:
             self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
-        self.query_bert_path_or_handler = query_bert_path_or_handler
-        self.sub_feat_path_or_handler = sub_feat_path_or_handler
-        self.vid_fear_path_or_handler = vid_feat_path_or_handler
         self.normalize_vfeat = normalize_vfeat
         self.normalize_tfeat = normalize_tfeat
 
@@ -339,11 +316,12 @@ class VQASR_segment(Dataset):
         )
 
 
-class VQASR_train(Dataset):
+# Return format according to ranking loss
+# pos, intra-neg, inter-neg
+class VQASR_Ranking(Dataset):
     """
     Args:
         avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
-
     Return:
         a dict: {
             "meta": {
@@ -355,7 +333,6 @@ class VQASR_train(Dataset):
                 "answer_segment_name": list[str],                   # name of segments: ["xtuiYd45q1W_segment1",...]
                 "answer_segment_id": list[segment_id],              # unique_segment_id
                 "answer_segment_info": list[[st,ed], ... [st,ed]],  # start_time, end_time of coresponding segment
-
                 #   modified in v2:
                 "pos_seg_id_for_training": int,                  # sample one ground truth segment for training
                 "pos_seg_name_for_training": str,
@@ -364,11 +341,9 @@ class VQASR_train(Dataset):
                 "inter_neg_seg_id_for_training": int,                  # sample one inter wrong segment for training
                 "inter_neg_seg_name_for_training": str,
             }
-
             "query_text_feat": torch.tensor, (L, D_q)                       # query feature
             "query_vis_feat": torch.tensor,  (n_region, 2048)               # image feature&region feature
             "image_2_text_alignment": list[list]                              # image to token alignment
-
             #   modified in v2:                                             # n_sample sub/video feature include the groundtruth
             "pos_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)
             "intra_neg_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)
@@ -379,33 +354,21 @@ class VQASR_train(Dataset):
         }
     """
 
-    def __init__(self, query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
-                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+    def __init__(self, dset_name='train', normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        assert query_type in ['all', 'text', 'video', 'text_video'], \
-            "dset_name should be within 'all', 'text', 'video', 'text_video'"
-        annotation = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
-        self.data = []
-        for anno in annotation:
-            q_type = anno['query_type']
-            if query_type == 'text' and not q_type == 'Text Only':
-                continue
-            elif query_type == 'video' and not q_type == 'Video Only':
-                continue
-            elif query_type == 'text_video' and not q_type == 'Text and Video':
-                continue
-            else:
-                self.data.append(anno)
+        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        self.dset_name = dset_name
+        if dset_name == 'train':
+            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+        else:
+            self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         # return dict should also be modified if change the neg number
         self.n_pos = 1
         self.n_neg_intra = 1
         self.n_neg_inter = 1
 
-        self.query_bert_path_or_handler = query_bert_path_or_handler
-        self.sub_feat_path_or_handler = sub_feat_path_or_handler
-        self.vid_fear_path_or_handler = vid_feat_path_or_handler
         self.normalize_vfeat = normalize_vfeat
         self.normalize_tfeat = normalize_tfeat
 
@@ -457,6 +420,22 @@ class VQASR_train(Dataset):
             self.data[item_idx]['intra_negative_segment_id'] = negative_seg_id_intra
             self.data[item_idx]['inter_negative_segment_name'] = negative_seg_name_inter
             self.data[item_idx]['inter_negative_segment_id'] = negative_seg_id_inter
+
+        # Generate query type list
+        self.query_type = dict(
+            text=[],
+            video=[],
+            text_video=[]
+        )
+
+        for item in self.data:
+            q_type = item['query_type']
+            if q_type == 'Text Only':
+                self.query_type['text'].append(item['query_id'])
+            elif q_type == 'Video Only':
+                self.query_type['video'].append(item['query_id'])
+            else:
+                self.query_type['text_video'].append(item['query_id'])
 
     def __len__(self):
         return len(self.data)
@@ -528,20 +507,22 @@ class VQASR_train(Dataset):
             query_text_feat=torch.from_numpy(query_text_feat),
             query_vis_feat=torch.from_numpy(query_vis_feat),
             image_2_text_alignment=img_2_text_alignment,
-            pos_vis_feat=ctx_vis_feat[0],
-            intra_neg_vis_feat=ctx_vis_feat[1],
-            inter_neg_vis_feat=ctx_vis_feat[2],
-            pos_text_feat=ctx_text_feat[0],
-            intra_neg_text_feat=ctx_text_feat[1],
-            inter_neg_text_feat=ctx_text_feat[2],
+            pos_ctx_vis_feat=ctx_vis_feat[0],
+            intra_neg_ctx_vis_feat=ctx_vis_feat[1],
+            inter_neg_ctx_vis_feat=ctx_vis_feat[2],
+            pos_ctx_text_feat=ctx_text_feat[0],
+            intra_neg_ctx_text_feat=ctx_text_feat[1],
+            inter_neg_ctx_text_feat=ctx_text_feat[2],
         )
 
+    def get_query_type(self):
+        return self.query_type
 
-class VQASR_test(Dataset):
+
+class VQASR_Ranking_enum(Dataset):
     """
     Args:
         avg_pooling, boolean, default = False, True for avg_pooling, False for max_pooling
-
     Return:
         a dict: {
             "meta": {
@@ -553,44 +534,29 @@ class VQASR_test(Dataset):
                 "answer_segment_name": list[str],                   # name of segments: ["xtuiYd45q1W_segment1",...]
                 "answer_segment_id": list[segment_id],              # unique_segment_id
                 "answer_segment_info": list[[st,ed], ... [st,ed]],  # start_time, end_time of coresponding segment
-
                 #   modified in v2:
-                "seg_id_for_training": int,                  # sample one segment for training, might be truth or not
-                "seg_name_for_training": str,
+                "seg_id_for_ranking": int,                  #
+                "seg_name_for_ranking": str,
             }
-
             "query_text_feat": torch.tensor, (L, D_q)                       # query feature
             "query_vis_feat": torch.tensor,  (n_region, 2048)               # image feature&region feature
             "image_2_text_alignment": list[list]                              # image to token alignment
-
             #   modified in v2:
             "ctx_text_feat": torch.tensor, (n_clip_in_segment, dim_sub)     # sampled sub/video feature
             "ctx_vis_feat": torch.tensor, (n_sample, n_clip_in_segment, dim_video)
         }
     """
 
-    def __init__(self, query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
-                 vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
+    def __init__(self, dset_name='test', normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        assert query_type in ['all', 'text', 'video', 'text_video'], \
-            "dset_name should be within 'all', 'text', 'video', 'text_video'"
-        annotation = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
-        self.data = []
-        for anno in annotation:
-            q_type = anno['query_type']
-            if query_type == 'text' and not q_type == 'Text Only':
-                continue
-            elif query_type == 'video' and not q_type == 'Video Only':
-                continue
-            elif query_type == 'text_video' and not q_type == 'Text and Video':
-                continue
-            else:
-                self.data.append(anno)
+        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        self.dset_name = dset_name
+        if dset_name == 'train':
+            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+        else:
+            self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
-        self.query_bert_path_or_handler = query_bert_path_or_handler
-        self.sub_feat_path_or_handler = sub_feat_path_or_handler
-        self.vid_fear_path_or_handler = vid_feat_path_or_handler
         self.normalize_vfeat = normalize_vfeat
         self.normalize_tfeat = normalize_tfeat
 
@@ -607,6 +573,13 @@ class VQASR_test(Dataset):
             vid_set.add(vid)
 
         seg2id = load_json(os.path.join(ID_FILE_ROOT, 'id.json'))['seg2id']
+        # collect query and seg
+        self.query_ids = [self.data[i]['query_id'] for i in range(len(self.data))]
+        self.seg_ids = [v for k, v in seg2id.items() if k[:11] in vid_set]
+        self.n_query = len(self.query_ids)
+        self.n_seg = len(self.seg_ids)
+        # print(self.n_query, self.n_seg)
+
         for query in self.data:
             for seg_name, seg_id in seg2id.items():
                 vid = seg_name[:11]
@@ -624,6 +597,22 @@ class VQASR_test(Dataset):
             self.query_img_feat = load_from_feature_package(f['query_grid_feature'])
             self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
             self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
+
+        # Generate query type list
+        self.query_type = dict(
+            text=[],
+            video=[],
+            text_video=[]
+        )
+
+        for item in self.data:
+            q_type = item['query_type']
+            if q_type == 'Text Only':
+                self.query_type['text'].append(item['query_id'])
+            elif q_type == 'Video Only':
+                self.query_type['video'].append(item['query_id'])
+            else:
+                self.query_type['text_video'].append(item['query_id'])
 
     def __len__(self):
         return len(self.pairlist)
@@ -644,8 +633,8 @@ class VQASR_test(Dataset):
             answer_segment_name=item['answer_segment_name'],
             answer_segment_id=item['answer_segment_id'],
             answer_segment_info=item['answer_segment_info'],
-            seg_id_for_training=seg_id,
-            seg_name_for_training=seg_name
+            seg_id_for_ranking=seg_id,
+            seg_name_for_ranking=seg_name
         )
 
         query_text_feat = self.query_text_feat[item['vid_name']][item['query_name']]['feature'][0]
@@ -673,44 +662,31 @@ class VQASR_test(Dataset):
             ctx_text_feat=torch.from_numpy(ctx_text_feat)
         )
 
+    def get_query_type(self):
+        return self.query_type
+
 
 if __name__ == "__main__":
-    train_set = VQASR_query(dset_name='test', query_type='video')
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
-    l = len(train_loader)
-    for batch in train_loader:
-        b = batch
-
-    train_set = VQASR_query(dset_name='test', query_type='text')
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
-    l = len(train_loader)
-    for batch in train_loader:
-        b = batch
-
-    train_set = VQASR_query(dset_name='test', query_type='text_video')
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
-    l = len(train_loader)
-    for batch in train_loader:
-        b = batch
-
-    train_set = VQASR_query(dset_name='test')
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
-    l = len(train_loader)
-    for batch in train_loader:
-        b = batch
-
-    test_set = VQASR_segment(dset_name='test')
-    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
-    for batch in test_loader:
-        b = batch
-
-    train_set = VQASR_train(query_type='video')
+    # train_set = VQASR_query(dset_name='test')
+    # train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    # l = len(train_loader)
+    # for batch in train_loader:
+    #     b = batch
+    #
+    # test_set = VQASR_segment(dset_name='test')
+    # test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    # for batch in test_loader:
+    #     b = batch
+    #
+    train_set = VQASR_Ranking()
+    query_type = train_set.get_query_type()
     train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
     l = len(train_loader)
     for batch in train_loader:
         b = batch
 
-    test_set = VQASR_test(query_type='video')
+    test_set = VQASR_Ranking_enum()
+    query_type = test_set.get_query_type()
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     l = len(test_loader)
     for batch in test_loader:
