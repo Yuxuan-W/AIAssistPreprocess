@@ -183,15 +183,30 @@ class VQASR_query(Dataset):
         }
     """
 
-    def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
+    def __init__(self, dset_name="train", query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
                  vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
         assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
-            self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+            annotation = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
         else:
-            self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+            annotation = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+
+        assert query_type in ['all', 'text', 'video', 'text_video'], \
+            "dset_name should be within 'all', 'text', 'video', 'text_video'"
+        self.data = []
+        for anno in annotation:
+            q_type = anno['query_type']
+
+            if query_type == 'text' and not q_type == 'Text Only':
+                continue
+            elif query_type == 'video' and not q_type == 'Video Only':
+                continue
+            elif query_type == 'text_video' and not q_type == 'Text and Video':
+                continue
+            else:
+                self.data.append(anno)
 
         self.query_bert_path_or_handler = query_bert_path_or_handler
         self.sub_feat_path_or_handler = sub_feat_path_or_handler
@@ -364,11 +379,24 @@ class VQASR_train(Dataset):
         }
     """
 
-    def __init__(self, query_bert_path_or_handler="", sub_feat_path_or_handler="",
+    def __init__(self, query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
                  vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+        assert query_type in ['all', 'text', 'video', 'text_video'], \
+            "dset_name should be within 'all', 'text', 'video', 'text_video'"
+        annotation = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
+        self.data = []
+        for anno in annotation:
+            q_type = anno['query_type']
+            if query_type == 'text' and not q_type == 'Text Only':
+                continue
+            elif query_type == 'video' and not q_type == 'Video Only':
+                continue
+            elif query_type == 'text_video' and not q_type == 'Text and Video':
+                continue
+            else:
+                self.data.append(anno)
 
         # return dict should also be modified if change the neg number
         self.n_pos = 1
@@ -541,11 +569,24 @@ class VQASR_test(Dataset):
         }
     """
 
-    def __init__(self, query_bert_path_or_handler="", sub_feat_path_or_handler="",
+    def __init__(self, query_type="all", query_bert_path_or_handler="", sub_feat_path_or_handler="",
                  vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+        assert query_type in ['all', 'text', 'video', 'text_video'], \
+            "dset_name should be within 'all', 'text', 'video', 'text_video'"
+        annotation = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
+        self.data = []
+        for anno in annotation:
+            q_type = anno['query_type']
+            if query_type == 'text' and not q_type == 'Text Only':
+                continue
+            elif query_type == 'video' and not q_type == 'Video Only':
+                continue
+            elif query_type == 'text_video' and not q_type == 'Text and Video':
+                continue
+            else:
+                self.data.append(anno)
 
         self.query_bert_path_or_handler = query_bert_path_or_handler
         self.sub_feat_path_or_handler = sub_feat_path_or_handler
@@ -634,23 +675,44 @@ class VQASR_test(Dataset):
 
 
 if __name__ == "__main__":
-    # train_set = VQASR_query()
-    # train_loader = DataLoader(dataset=train_set, batch_size=2, shuffle=True, collate_fn=collate_for_concat_fusion)
-    # for batch in train_loader:
-    #     b = batch
-    #
-    # test_set = VQASR_segment(dset_name='test')
-    # test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
-    # for batch in test_loader:
-    #     b = batch
-
-    train_set = VQASR_train()
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
+    train_set = VQASR_query(dset_name='test', query_type='video')
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    l = len(train_loader)
     for batch in train_loader:
         b = batch
 
-    test_set = VQASR_test()
+    train_set = VQASR_query(dset_name='test', query_type='text')
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    l = len(train_loader)
+    for batch in train_loader:
+        b = batch
+
+    train_set = VQASR_query(dset_name='test', query_type='text_video')
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    l = len(train_loader)
+    for batch in train_loader:
+        b = batch
+
+    train_set = VQASR_query(dset_name='test')
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    l = len(train_loader)
+    for batch in train_loader:
+        b = batch
+
+    test_set = VQASR_segment(dset_name='test')
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    for batch in test_loader:
+        b = batch
+
+    train_set = VQASR_train(query_type='video')
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
+    l = len(train_loader)
+    for batch in train_loader:
+        b = batch
+
+    test_set = VQASR_test(query_type='video')
+    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    l = len(test_loader)
     for batch in test_loader:
         b = batch
 
