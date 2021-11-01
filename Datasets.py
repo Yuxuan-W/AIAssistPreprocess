@@ -207,6 +207,29 @@ class VQASR_query(Dataset):
             self.sub_text_feat = load_from_feature_package(f['subtitle_text_feature'])
             self.video_vis_feat = load_from_feature_package(f['frame_grid_feature'])
 
+        # Generate query type list
+        self.query_type = dict(
+            text=[],
+            video=[],
+            text_video=[]
+        )
+
+        for item in self.data:
+            q_type = item['query_type']
+            if q_type == 'Text Only':
+                self.query_type['text'].append(item['query_id'])
+            elif q_type == 'Video Only':
+                self.query_type['video'].append(item['query_id'])
+            else:
+                self.query_type['text_video'].append(item['query_id'])
+
+        # generate list that only in test
+        if dset_name == 'test':
+            self.only_in_test = []
+            for item in self.data:
+                if item['only_in_test']:
+                    self.only_in_test.append(item['query_id'])
+
     def __len__(self):
         return len(self.data)
 
@@ -437,6 +460,13 @@ class VQASR_Ranking(Dataset):
             else:
                 self.query_type['text_video'].append(item['query_id'])
 
+        # generate list that only in test
+        if dset_name == 'test':
+            self.only_in_test = []
+            for item in self.data:
+                if item['only_in_test']:
+                    self.only_in_test.append(item['query_id'])
+
     def __len__(self):
         return len(self.data)
 
@@ -514,9 +544,6 @@ class VQASR_Ranking(Dataset):
             intra_neg_ctx_text_feat=ctx_text_feat[1],
             inter_neg_ctx_text_feat=ctx_text_feat[2],
         )
-
-    def get_query_type(self):
-        return self.query_type
 
 
 class VQASR_Ranking_enum(Dataset):
@@ -614,6 +641,13 @@ class VQASR_Ranking_enum(Dataset):
             else:
                 self.query_type['text_video'].append(item['query_id'])
 
+        # generate list that only in test
+        if dset_name == 'test':
+            self.only_in_test = []
+            for item in self.data:
+                if item['only_in_test']:
+                    self.only_in_test.append(item['query_id'])
+
     def __len__(self):
         return len(self.pairlist)
 
@@ -662,31 +696,31 @@ class VQASR_Ranking_enum(Dataset):
             ctx_text_feat=torch.from_numpy(ctx_text_feat)
         )
 
-    def get_query_type(self):
-        return self.query_type
-
 
 if __name__ == "__main__":
-    # train_set = VQASR_query(dset_name='test')
-    # train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
-    # l = len(train_loader)
-    # for batch in train_loader:
-    #     b = batch
+    train_set = VQASR_query(dset_name='test')
+    only_in_test = train_set.only_in_test
+    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    l = len(train_loader)
+    for batch in train_loader:
+        b = batch
     #
     # test_set = VQASR_segment(dset_name='test')
     # test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     # for batch in test_loader:
     #     b = batch
     #
-    train_set = VQASR_Ranking()
-    query_type = train_set.get_query_type()
+    train_set = VQASR_Ranking(dset_name='test')
+    only_in_test = train_set.only_in_test
+    query_type = train_set.query_type
     train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
     l = len(train_loader)
     for batch in train_loader:
         b = batch
 
-    test_set = VQASR_Ranking_enum()
-    query_type = test_set.get_query_type()
+    test_set = VQASR_Ranking_enum(dset_name='test')
+    only_in_test = test_set.only_in_test
+    query_type = test_set.query_type
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     l = len(test_loader)
     for batch in test_loader:

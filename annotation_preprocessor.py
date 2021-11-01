@@ -104,6 +104,13 @@ def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
                 answer_segment_info=[seg_info[seg_idx - 1] for seg_idx in q['Segment']],
             )
 
+    # only in test check
+    only_in_test_set = set()
+    with open('only_in_test.txt') as f:
+        only_in_test = f.readlines()
+    for vid in only_in_test:
+        only_in_test_set.add(vid[:11])
+
     # package to iterable list for dataloader
     train_package = []
     test_package = []
@@ -111,6 +118,10 @@ def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
         vid = query_name[:11]
         query_item = query_dict_by_name[query_name]
         if vid in test_set:
+            if vid in only_in_test_set:
+                query_item['only_in_test'] = True
+            else:
+                query_item['only_in_test'] = False
             test_package.append(query_item)
         else:
             train_package.append(query_item)
