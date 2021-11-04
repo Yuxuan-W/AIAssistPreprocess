@@ -55,7 +55,7 @@ def preprocess_annotation(idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOT
     save_jsonl(annotation_list, os.path.join(release_save_path, 'annotation_release.jsonl'))
 
 
-def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
+def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt', valid_list_path='valid.txt',
                        annotation_root=ANNOTATION_ROOT, save_path=ANNOTATION_PACKAGE_ROOT):
     '''
     "meta": {
@@ -77,11 +77,6 @@ def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
     id2query = load_json(os.path.join(idfile_root, 'id.json'))['id2query']
     seg2id = load_json(os.path.join(idfile_root, 'id.json'))['seg2id']
     annotation = load_annotation_list()
-    test_set = set()
-    with open(test_list_path) as f:
-        for line in f:
-            vid = line.split('\n')[0]
-            test_set.add(vid)
 
     # generate query dict, the key is query_name
     query_dict_by_name = dict()
@@ -104,28 +99,56 @@ def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt',
                 answer_segment_info=[seg_info[seg_idx - 1] for seg_idx in q['Segment']],
             )
 
-    # only in test check
+    # test split
+    test_set = set()
+    with open(test_list_path) as f:
+        for line in f:
+            vid = line.split('\n')[0]
+            test_set.add(vid)
+
     only_in_test_set = set()
     with open('only_in_test.txt') as f:
         only_in_test = f.readlines()
     for vid in only_in_test:
         only_in_test_set.add(vid[:11])
 
+    # valid split
+    valid_set = set()
+    with open(valid_list_path) as f:
+        for line in f:
+            vid = line.split('\n')[0]
+            valid_set.add(vid)
+
+    only_in_valid_set = set()
+    with open('only_in_valid.txt') as f:
+        only_in_valid = f.readlines()
+    for vid in only_in_valid:
+        only_in_valid_set.add(vid[:11])
+
     # package to iterable list for dataloader
     train_package = []
+    valid_package = []
     test_package = []
     for _, query_name in id2query.items():
         vid = query_name[:11]
         query_item = query_dict_by_name[query_name]
         if vid in test_set:
             if vid in only_in_test_set:
-                query_item['only_in_test'] = True
+                query_item['not_in_train'] = True
             else:
-                query_item['only_in_test'] = False
+                query_item['not_in_train'] = False
             test_package.append(query_item)
+        elif vid in valid_set:
+            if vid in only_in_valid_set:
+                query_item['not_in_train'] = True
+            else:
+                query_item['not_in_train'] = False
+            valid_package.append(query_item)
         else:
             train_package.append(query_item)
+
     save_jsonl(train_package, os.path.join(save_path, 'trainset.jsonl'))
+    save_jsonl(valid_package, os.path.join(save_path, 'validset.jsonl'))
     save_jsonl(test_package, os.path.join(save_path, 'testset.jsonl'))
 
 

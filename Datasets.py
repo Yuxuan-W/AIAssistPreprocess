@@ -182,11 +182,13 @@ class VQASR_query(Dataset):
     def __init__(self, dset_name="train", query_bert_path_or_handler="", sub_feat_path_or_handler="",
                  vid_feat_path_or_handler="", normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
-        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        assert dset_name in ['train', 'valid', 'test'], "dset_name should be in 'train' 'valid' and 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
             self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
-        else:
+        elif dset_name == 'valid':
+            self.data = load_jsonl(os.path.join(annotation_root, 'validset.jsonl'))
+        elif dset_name == 'test':
             self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         self.query_bert_path_or_handler = query_bert_path_or_handler
@@ -223,12 +225,12 @@ class VQASR_query(Dataset):
             else:
                 self.query_type['text_video'].append(item['query_id'])
 
-        # generate list that only in test
-        if dset_name == 'test':
-            self.only_in_test = []
+        # generate list that does not overlap with train set
+        if dset_name == 'valid' or dset_name == 'test':
+            self.not_in_train = []
             for item in self.data:
-                if item['only_in_test']:
-                    self.only_in_test.append(item['query_id'])
+                if item['not_in_train']:
+                    self.not_in_train.append(item['query_id'])
 
     def __len__(self):
         return len(self.data)
@@ -380,11 +382,13 @@ class VQASR_Ranking(Dataset):
     def __init__(self, dset_name='train', normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        assert dset_name in ['train', 'valid', 'test'], "dset_name should be in 'train' 'valid' and 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
             self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
-        else:
+        elif dset_name == 'valid':
+            self.data = load_jsonl(os.path.join(annotation_root, 'validset.jsonl'))
+        elif dset_name == 'test':
             self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         # return dict should also be modified if change the neg number
@@ -460,12 +464,12 @@ class VQASR_Ranking(Dataset):
             else:
                 self.query_type['text_video'].append(item['query_id'])
 
-        # generate list that only in test
-        if dset_name == 'test':
-            self.only_in_test = []
+        # generate list that does not overlap with train set
+        if dset_name == 'valid' or dset_name == 'test':
+            self.not_in_train = []
             for item in self.data:
-                if item['only_in_test']:
-                    self.only_in_test.append(item['query_id'])
+                if item['not_in_train']:
+                    self.not_in_train.append(item['query_id'])
 
     def __len__(self):
         return len(self.data)
@@ -577,11 +581,13 @@ class VQASR_Ranking_enum(Dataset):
     def __init__(self, dset_name='test', normalize_vfeat=True, normalize_tfeat=True,
                  avg_pooling=False, annotation_root=ANNOTATION_PACKAGE_ROOT, feature_root=FEATURE_PACKAGE_ROOT):
 
-        assert dset_name in ['train', 'test'], "dset_name should be whether 'train' or 'test'"
+        assert dset_name in ['train', 'valid', 'test'], "dset_name should be in 'train' 'valid' and 'test'"
         self.dset_name = dset_name
         if dset_name == 'train':
             self.data = load_jsonl(os.path.join(annotation_root, 'trainset.jsonl'))
-        else:
+        elif dset_name == 'valid':
+            self.data = load_jsonl(os.path.join(annotation_root, 'validset.jsonl'))
+        elif dset_name == 'test':
             self.data = load_jsonl(os.path.join(annotation_root, 'testset.jsonl'))
 
         self.normalize_vfeat = normalize_vfeat
@@ -641,12 +647,12 @@ class VQASR_Ranking_enum(Dataset):
             else:
                 self.query_type['text_video'].append(item['query_id'])
 
-        # generate list that only in test
-        if dset_name == 'test':
-            self.only_in_test = []
+        # generate list that does not overlap with train set
+        if dset_name == 'valid' or dset_name == 'test':
+            self.not_in_train = []
             for item in self.data:
-                if item['only_in_test']:
-                    self.only_in_test.append(item['query_id'])
+                if item['not_in_train']:
+                    self.not_in_train.append(item['query_id'])
 
     def __len__(self):
         return len(self.pairlist)
@@ -699,19 +705,19 @@ class VQASR_Ranking_enum(Dataset):
 
 if __name__ == "__main__":
     train_set = VQASR_query(dset_name='test')
-    only_in_test = train_set.only_in_test
+    not_in_train = train_set.not_in_train
     train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
     l = len(train_loader)
     for batch in train_loader:
         b = batch
-    #
-    # test_set = VQASR_segment(dset_name='test')
-    # test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
-    # for batch in test_loader:
-    #     b = batch
-    #
-    train_set = VQASR_Ranking(dset_name='test')
-    only_in_test = train_set.only_in_test
+
+    test_set = VQASR_segment(dset_name='test')
+    test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
+    for batch in test_loader:
+        b = batch
+
+    train_set = VQASR_Ranking(dset_name='valid')
+    not_in_train = train_set.not_in_train
     query_type = train_set.query_type
     train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
     l = len(train_loader)
@@ -719,7 +725,7 @@ if __name__ == "__main__":
         b = batch
 
     test_set = VQASR_Ranking_enum(dset_name='test')
-    only_in_test = test_set.only_in_test
+    not_in_train = test_set.not_in_train
     query_type = test_set.query_type
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     l = len(test_loader)
