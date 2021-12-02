@@ -5,6 +5,7 @@ import cv2
 import shutil
 from tqdm import tqdm
 from configs.preprocess_configs import FRAME_WIDTH, FRAME_HEIGHT, DOWNLOAD_ROOT, FRAME_ROOT, FRAME_RATE
+from json_utils import load_annotation_list
 
 
 def extract_video_opencv(v_path, f_root):
@@ -97,8 +98,8 @@ def sampling_frame(v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
 if __name__ == '__main__':
     sampling_frame()
 
-    # seg_info = dict()
-    # annotation_list = load_annotation_list()
-    # for anno in annotation_list:
-    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
-    # separate_frame(seg_info)
+    seg_info = dict()
+    annotation_list = load_annotation_list()
+    for anno in annotation_list:
+        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    separate_frame(seg_info)
