@@ -18,7 +18,8 @@ def remove_tag(sentence):
     return sentence
 
 
-def preprocess_annotation(idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOTATION_ROOT):
+def preprocess_annotation(test_list_path='test.txt', valid_list_path='valid.txt',
+                          idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOTATION_ROOT):
     annotation_list = load_annotation_list()
     id2seg_dict = dict()
     seg2id_dict = dict()
@@ -26,6 +27,22 @@ def preprocess_annotation(idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOT
     id2query_dict = dict()
     query2id_dict = dict()
     qid = 0
+
+    # test split
+    test_set = set()
+    with open(test_list_path) as f:
+        for line in f:
+            vid = line.split('\n')[0]
+            test_set.add(vid)
+
+    # valid split
+    valid_set = set()
+    with open(valid_list_path) as f:
+        for line in f:
+            vid = line.split('\n')[0]
+            valid_set.add(vid)
+
+    release = []
     for i in range(len(annotation_list)):
         annotation = annotation_list[i]
         vid = annotation[0]['videoID']
@@ -42,9 +59,16 @@ def preprocess_annotation(idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOT
             qid += 1
             # process query
             del query['Reason']
-            query['Question'] = remove_tag(query['Question'])
+            # query['Question'] = remove_tag(query['Question'])
             annotation[j] = query
-        annotation_list[i] = annotation
+        split = dict(split='train')
+        if vid in test_set:
+            split['split'] = 'test'
+        elif vid in valid_set:
+            split['split'] = 'val'
+        annotation.insert(1, split)
+        if vid not in test_set:
+            release.append(annotation)
     id_dict = dict(
         id2seg=id2seg_dict,
         seg2id=seg2id_dict,
@@ -52,7 +76,7 @@ def preprocess_annotation(idfile_save_path=ID_FILE_ROOT, release_save_path=ANNOT
         query2id=query2id_dict
     )
     save_json(id_dict, os.path.join(idfile_save_path, 'id.json'))
-    save_jsonl(annotation_list, os.path.join(release_save_path, 'annotation_release.jsonl'))
+    save_jsonl(release, os.path.join(release_save_path, 'annotation_release.jsonl'))
 
 
 def package_annotation(idfile_root=ID_FILE_ROOT, test_list_path='test.txt', valid_list_path='valid.txt',
