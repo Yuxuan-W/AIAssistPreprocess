@@ -58,7 +58,7 @@ def preprocess_annotation(test_list_path='test.txt', valid_list_path='valid.txt'
             query2id_dict[query['ID']] = qid
             qid += 1
             # process query
-            del query['Reason']
+            # del query['Reason']
             # query['Question'] = remove_tag(query['Question'])
             annotation[j] = query
         split = dict(split='train')

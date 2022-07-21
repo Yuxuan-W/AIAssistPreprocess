@@ -56,7 +56,7 @@ def resize_dim(w, h, target):
 
 def separate_frame(segment, f_root=FRAME_ROOT):
     video_list = glob.glob(os.path.join(f_root, '*/'))
-    for video in video_list:
+    for video in tqdm(video_list):
         vid = video[-12:-1]
         seg = segment[vid]
         frame_list = glob.glob(os.path.join(video, '*.jpg'))
@@ -71,7 +71,7 @@ def separate_frame(segment, f_root=FRAME_ROOT):
         for frame in frame_list:
             time = float(frame.split('/')[-1][:-4])
             for seg_idx in range(len(seg)):
-                if seg[seg_idx][0] <= time <= seg[seg_idx][1]:
+                if seg[seg_idx][0] <= time < seg[seg_idx][1]:
                     os.replace(frame, os.path.join(seg_dir_list[seg_idx], frame.split('/')[-1]))
 
 
@@ -98,8 +98,12 @@ def sampling_frame(v_root=DOWNLOAD_ROOT, f_root=FRAME_ROOT):
 if __name__ == '__main__':
     sampling_frame()
 
-    seg_info = dict()
-    annotation_list = load_annotation_list()
-    for anno in annotation_list:
-        seg_info[anno[0]['videoID']] = anno[1]['segInfo']
-    separate_frame(seg_info)
+    # seg_info = dict()
+    # annotation_list = load_annotation_list()
+    # for anno in annotation_list:
+    #     seg_info[anno[0]['videoID']] = anno[1]['segInfo']
+    # separate_frame(seg_info)
+    # frame_list = glob.glob(os.path.join(FRAME_ROOT, '*/*.jpg'))
+    # for frame in tqdm(frame_list):
+    #     os.remove(frame)
+

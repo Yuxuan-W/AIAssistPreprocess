@@ -3,6 +3,7 @@ import os
 import math
 import h5py
 import numpy as np
+from tqdm import tqdm
 from json_utils import load_annotation_list
 from configs.preprocess_configs import (CLIP_LENGTH, GRID_FEATURE_ROOT_FRAME, GRID_FEATURE_ROOT_CLIP,
                                         TEXT_FEATURE_ROOT_SUBTITLE, TEXT_FEATURE_ROOT_CLIP)
@@ -76,7 +77,7 @@ def separate_into_clip(seg_info, frame_root=GRID_FEATURE_ROOT_FRAME, sub_root=TE
     if not os.path.exists(clip_grid_root):
         os.makedirs(clip_grid_root)
     frame_grid_dir_list = glob.glob(os.path.join(frame_root, '*'))
-    for frame_grid_dir in frame_grid_dir_list:
+    for frame_grid_dir in tqdm(frame_grid_dir_list):
         vid = frame_grid_dir.split('/')[-1]
         new_video_h5 = h5py.File(os.path.join(clip_grid_root, vid + '.hdf5'), 'w')
         frame_grid_h5_list = glob.glob(os.path.join(frame_grid_dir, '*.hdf5'))
@@ -94,7 +95,7 @@ def separate_into_clip(seg_info, frame_root=GRID_FEATURE_ROOT_FRAME, sub_root=TE
     if not os.path.exists(clip_text_root):
         os.makedirs(clip_text_root)
     sub_h5_list = glob.glob(os.path.join(sub_root, '*'))
-    for sub_h5 in sub_h5_list:
+    for sub_h5 in tqdm(sub_h5_list):
         vid = sub_h5.split('/')[-1][:-5]
         video_seg_info = seg_info[vid]
         new_video_h5 = h5py.File(os.path.join(clip_text_root, vid + '.hdf5'), 'w')
