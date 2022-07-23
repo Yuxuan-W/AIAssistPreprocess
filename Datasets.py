@@ -11,6 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from easydict import EasyDict as edict
 
+from tqdm import tqdm
 from json_utils import load_json, load_jsonl
 from feature_packager import load_from_feature_package
 from configs.preprocess_configs import ANNOTATION_PACKAGE_ROOT, FEATURE_PACKAGE_ROOT, ID_FILE_ROOT
@@ -704,16 +705,16 @@ class VQASR_Ranking_enum(Dataset):
 
 
 if __name__ == "__main__":
-    train_set = VQASR_query(dset_name='test')
-    not_in_train = train_set.not_in_train
-    train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True, collate_fn=collate_for_concat_fusion)
+    train_set = VQASR_query(dset_name='train')
+    # not_in_train = train_set.not_in_train
+    train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=False, collate_fn=collate_for_concat_fusion)
     l = len(train_loader)
-    for batch in train_loader:
+    for batch in tqdm(train_loader):
         b = batch
 
     test_set = VQASR_segment(dset_name='test')
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
-    for batch in test_loader:
+    for batch in tqdm(test_loader):
         b = batch
 
     train_set = VQASR_Ranking(dset_name='valid')
@@ -721,7 +722,7 @@ if __name__ == "__main__":
     query_type = train_set.query_type
     train_loader = DataLoader(dataset=train_set, batch_size=1, shuffle=True)
     l = len(train_loader)
-    for batch in train_loader:
+    for batch in tqdm(train_loader):
         b = batch
 
     test_set = VQASR_Ranking_enum(dset_name='test')
@@ -729,6 +730,6 @@ if __name__ == "__main__":
     query_type = test_set.query_type
     test_loader = DataLoader(dataset=test_set, batch_size=1, shuffle=False)
     l = len(test_loader)
-    for batch in test_loader:
+    for batch in tqdm(test_loader):
         b = batch
 
