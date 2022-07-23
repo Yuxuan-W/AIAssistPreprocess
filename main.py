@@ -8,16 +8,17 @@ from clip_separator import separate_into_clip
 from feature_packager import package_all_feature
 from annotation_preprocessor import preprocess_annotation, package_annotation
 
+
 if __name__ == '__main__':
 
     # Download
-    download_data()
+    download_data() # Deprecated, better to use App "Downie" for Mac (search in "macwk.com"), ensure that the file type is .mp4 and .srt
 
     # Extract Frames
-    sampling_frame()
+    sampling_frame() # Sampling frame from raw videos
 
     # Extract Grid Features
-    extract_grid_feature()
+    extract_grid_feature() # Extract visual features from frames and query images
 
     # Load annotations
     print('Start loading annotations...')
@@ -27,22 +28,22 @@ if __name__ == '__main__':
         seg_info[anno[0]['videoID']] = anno[1]['segInfo']
 
     # Preprocess and package annotations
-    preprocess_annotation()
-    package_annotation()
+    preprocess_annotation() # Pre-process annotations for packaging
+    package_annotation() # Packaging annotations, converting from raw to our final json version
 
     # Separate Grid Features
-    separate_frame_grid_feature(seg_info)
+    separate_frame_grid_feature(seg_info) # Separate the extracted visual features by segments
 
     # PreProcess subtitles
-    preprocess_subtitles(seg_info)
+    preprocess_subtitles(seg_info) # Process raw srt file
 
     # Extract Text Features
-    extract_text_feature()
+    extract_text_feature() # Extract textual features from subtitles and query text
 
     # Separate into Clips
-    separate_into_clip(seg_info)
+    separate_into_clip(seg_info) # Re-allocate features by clips (per 1.5s)
 
     # Package all feature
-    package_all_feature()
+    package_all_feature() # Package all the features
 
 
